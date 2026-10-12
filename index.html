@@ -4231,7 +4231,7 @@ function skKind(look){if(!look)return null;const g=look.g||(look===S.look?(S.gen
   if(g==='f'&&/^(casual|jersey)$/.test(look.outfit)&&look.acc!=='shayla')return 'tf';
   return null}
 function skWants(look,ch,k){if(look===S.look||(ch&&typeof player!=='undefined'&&ch===player.ch))return true;
-  const q=S.settings.quality,M=SKC.M[k];const cap=q==='low'?0:(q==='mid'?.5:1)*(k==='man'?6:k==='ab'?4:3);return (M.count||0)<cap}
+  const q=S.settings.quality,M=SKC.M[k];const cap=q==='low'?0:(q==='med'||q==='mid'?.5:1)*(k==='man'?6:k==='ab'?4:3);return (M.count||0)<cap}
 function skAttach(ch){const U=ch.userData;if(U.sk)return;const look=U.look,k=skKind(look);if(!k)return;const M=SKC.M[k];
   if(!M.data){if(!M.fail)skLoad(k);return}if(!skWants(look,ch,k))return;
   const I=skInstance(M.data);I.kind=k;U.sk=I;SKC.count++;if(!(look===S.look))M.count=(M.count||0)+1;
@@ -4596,6 +4596,61 @@ const _leaveMatch25=leaveMatch;leaveMatch=async function(){const wasOnline=game&
 /* رابط دعوة فيه الكود: #join=ABCD */
 (function(){const m=/[#&]join=([A-Z0-9]{4})/i.exec(location.hash);if(!m)return;const code=m[1].toUpperCase();
   const t=setInterval(()=>{if(typeof mode!=='undefined'&&mode==='explore'){clearInterval(t);onlInit().then(()=>onlJoinDlg(code)).catch(e=>toast(onlErr(e)))}},1000)})();
+
+/* ================= v26: تبريد الجوال — حد للفريمات، دقة أخف، ظلال أخف، وتوقف لما ما يتحرك شي ================= */
+const PERF={mobile:(('ontouchstart' in window)||navigator.maxTouchPoints>0)&&Math.min(screen.width,screen.height)<900,last:0,idleT:0};
+/* حد الفريمات: الجوال 30، وبالمباراة لما ما فيه حركة 15 */
+const _loop26=loop;
+loop=function(ts){const now=ts||performance.now();
+  let fps=PERF.mobile?30:60;
+  if(mode==='match'&&game&&!tween&&!anims.length&&!game.busy){PERF.idleT+=now-PERF.last;if(PERF.idleT>1500)fps=15}else PERF.idleT=0;
+  if(document.hidden){requestAnimationFrame(loop);PERF.last=now;return}
+  if(now-PERF.last<1000/fps-2){requestAnimationFrame(loop);return}
+  PERF.last=now;return _loop26.apply(this,arguments)};
+/* دقة الشاشة والظلال أخف على الجوال */
+const _applyQuality26=applyQuality;
+applyQuality=function(){_applyQuality26.apply(this,arguments);if(!PERF.mobile)return;const q=S.settings.quality,dpr=window.devicePixelRatio||1;
+  const pr=q==='low'?Math.min(dpr,1)*.75:q==='high'?Math.min(dpr,1.5):Math.min(dpr,1.2);renderer.setPixelRatio(pr);
+  if(typeof FX!=='undefined'&&FX.composer){FX.composer.setPixelRatio(pr);FX.composer.setSize(innerWidth,innerHeight)}
+  const size=q==='high'?2048:1024;if(q!=='low'&&sun.shadow.mapSize.x!==size){sun.shadow.mapSize.set(size,size);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}};
+try{applyQuality()}catch(e){}
+/* أول تشغيل على الجوال: جودة متوسطة */
+if(PERF.mobile&&!S.perfInit){S.perfInit=1;if(S.settings.quality==='high'){S.settings.quality='med';try{applyQuality()}catch(e){}}try{persist()}catch(e){}}
+
+/* ================= v27: صوت حقيقي بين اللاعبين بالمباراة الأونلاين (WebRTC) ================= */
+const VC={pc:null,local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,raf:0,needTap:false};
+const VC_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
+async function vcStart(){if(VC.pc||!ONL.ref||!game||!game.online)return;VC.role=ONL.role;
+  const pc=VC.pc=new RTCPeerConnection({iceServers:VC_ICE});
+  VC.audio=document.createElement('audio');VC.audio.autoplay=true;VC.audio.playsInline=true;VC.audio.setAttribute('playsinline','');document.body.appendChild(VC.audio);
+  pc.ontrack=e=>{VC.audio.srcObject=e.streams[0];VC.audio.muted=!S.settings.oppVoice;VC.audio.play().catch(()=>{VC.needTap=true;toast('اضغط على الشاشة عشان تسمع خصمك')});vcMeter(e.streams[0])};
+  pc.onicecandidate=e=>{if(!e.candidate||!ONL.ref)return;const f=VC.role==='host'?'hIce':'gIce';ONL.ref.update({[f]:firebase.firestore.FieldValue.arrayUnion(JSON.stringify(e.candidate.toJSON()))}).catch(()=>{})};
+  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected')toast('🎙️ الصوت متصل مع '+(ONL.oppName||'خصمك'));if(pc.connectionState==='failed')toast('ما قدرنا نوصل الصوت — الشبكة تمنعه')};
+  try{VC.local=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+    VC.local.getAudioTracks().forEach(t=>{t.enabled=!!S.settings.matchVoice;pc.addTrack(t,VC.local)})}
+  catch(e){toast('المايك مقفول — تسمع خصمك بس');pc.addTransceiver('audio',{direction:'recvonly'})}
+  if(VC.role==='host'){const o=await pc.createOffer();await pc.setLocalDescription(o);ONL.ref.update({vOffer:o.sdp}).catch(()=>{})}
+  vcSignal()}
+/* تبادل الإشارات من مستند الغرفة */
+async function vcSignal(){const pc=VC.pc,r=ONL.room;if(!pc||!r)return;
+  try{if(VC.role==='guest'&&r.vOffer&&!pc.remoteDescription){await pc.setRemoteDescription({type:'offer',sdp:r.vOffer});const a=await pc.createAnswer();await pc.setLocalDescription(a);ONL.ref.update({vAnswer:a.sdp}).catch(()=>{})}
+    if(VC.role==='host'&&r.vAnswer&&!pc.remoteDescription)await pc.setRemoteDescription({type:'answer',sdp:r.vAnswer});
+    const ice=(VC.role==='host'?r.gIce:r.hIce)||[];if(pc.remoteDescription)for(;VC.gotIce<ice.length;VC.gotIce++){try{await pc.addIceCandidate(JSON.parse(ice[VC.gotIce]))}catch(e){}}}
+  catch(e){console.warn('voice',e)}}
+/* مؤشر "يتحدث الآن" من مستوى صوت الخصم */
+function vcMeter(stream){try{const a=audio();if(!a)return;const src=a.createMediaStreamSource(stream),an=a.createAnalyser();an.fftSize=256;src.connect(an);VC.ana=an;const d=new Uint8Array(an.frequencyBinCount);
+  const f=()=>{if(!VC.pc){return}an.getByteFrequencyData(d);let s=0;for(let i=2;i<40;i++)s+=d[i];const on=S.settings.oppVoice&&s/38>28;const p=$('#oppP');p&&p.classList.toggle('talking',on);VC.raf=setTimeout(f,120)};f()}catch(e){}}
+function vcStop(){if(VC.local)VC.local.getTracks().forEach(t=>t.stop());if(VC.pc)try{VC.pc.close()}catch(e){}if(VC.audio){VC.audio.srcObject=null;VC.audio.remove()}clearTimeout(VC.raf);
+  Object.assign(VC,{pc:null,local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,needTap:false})}
+document.addEventListener('pointerdown',()=>{if(VC.needTap&&VC.audio){VC.audio.play().then(()=>{VC.needTap=false}).catch(()=>{})}},true);
+/* أزرار المايك والسماعة تتحكم بالصوت الحقيقي بالأونلاين */
+const _mMic27=$('#mMic').onclick;$('#mMic').onclick=function(){if(game&&game.online){S.settings.matchVoice=!S.settings.matchVoice;persist();updMatchBtns();if(VC.local)VC.local.getAudioTracks().forEach(t=>t.enabled=S.settings.matchVoice);toast(S.settings.matchVoice?'🎙️ مايكك مفتوح — خصمك يسمعك':'أغلقت مايكك');return}return _mMic27.apply(this,arguments)};
+const _mMute27=$('#mMute').onclick;$('#mMute').onclick=function(){const r=_mMute27.apply(this,arguments);if(VC.audio)VC.audio.muted=!S.settings.oppVoice;return r};
+/* ربط بدورة الأونلاين */
+const _onlStart27=onlStart;onlStart=async function(){const r=await _onlStart27.apply(this,arguments);setTimeout(()=>vcStart().catch(e=>console.warn('voice',e)),400);return r};
+const _onlPump27=onlPump;onlPump=function(){vcSignal();return _onlPump27.apply(this,arguments)};
+const _onlListen27=onlListen;onlListen=function(ref){_onlListen27.apply(this,arguments);ref.onSnapshot(()=>{setTimeout(vcSignal,50)},()=>{})};
+const _onlClose27=onlClose;onlClose=function(){vcStop();return _onlClose27.apply(this,arguments)};
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}
