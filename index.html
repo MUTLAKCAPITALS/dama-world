@@ -3733,7 +3733,7 @@ function lb4Friends(){const so=socState();const rank={on:0,match:1,off:2};
 lbBuildUI=function(){let el=$('#lobby');if(!el){el=document.createElement('div');el.id='lobby';document.body.appendChild(el)}
   const tr=tierOf(S.rating||1000),d=lbDest(),th=THEMES[d.k],zn=(lbZones(d.k).find(z=>z.id===d.z)||{}).name||th.city;
   const xp=S.xp%100,lv=level(),pc=passClaimable(),sb=socBadge();const tasks=(S.daily&&S.daily.tasks)?S.daily.tasks.filter(t=>!t.done).length:0;
-  const endM=new Date(new Date().getFullYear(),new Date().getMonth()+1,1),daysLeft=Math.ceil((endM-new Date())/864e5);
+  const endM=(typeof seasonEnd==="function"?seasonEnd():new Date(new Date().getFullYear(),new Date().getMonth()+1,1)),daysLeft=Math.ceil((endM-new Date())/864e5);
   const dot=on=>on?'<i class="dot"></i>':'';const fr=lb4Friends();const presTx=s=>s==='on'?'متصل':s==='match'?'مشغول':'غير متصل';
   const notif=!S.loginClaimed||chestReady();
   el.className='lb4'+(window.LB4E?' in':'');window.LB4E=false;lb4Scale(el);
@@ -4800,7 +4800,7 @@ async function accDelete(){const u=ONL.auth.currentUser,db=ONL.db;try{if(ACC.key
     localStorage.removeItem('damaworld.v1');toast('انحذف حسابك');setTimeout(()=>location.reload(),800)}
   catch(e){if(e.code==='auth/requires-recent-login')toast('لأمانك: سجّل خروج وادخل من جديد، وبعدها احذف');else toast(accErr(e))}}
 /* ---------- مداخل الواجهة ---------- */
-function accUI(){let b=$('#accBan');const lb=$('#lbProf');if(!ACC.ready||!ACC.anon||!lb||mode!=='lobby'){if(b)b.remove();return}
+function accUI(){let b=$('#accBan');const lb=$('#lbProf');if(!ACC.ready||!ACC.anon||!lb||mode!=='lobby'||document.querySelector('.scrim')){if(b)b.remove();return}
   if(!b){b=document.createElement('button');b.id='accBan';b.textContent='💾 سجّل واحفظ تقدمك';b.onclick=e=>{e.stopPropagation();accLoginDlg()};document.body.appendChild(b)}
   const r=lb.getBoundingClientRect();b.style.left=(r.right+6)+'px';b.style.top=(r.top+r.height/2-14)+'px'}
 setInterval(accUI,1500);
@@ -4861,13 +4861,96 @@ async function ctlBoot(){try{await onlInit()}catch(e){return}const db=ONL.db,uid
   try{const d=await db.collection('users').doc(uid).get();if(!d.exists||!(d.data()||{}).created)await db.collection('users').doc(uid).set({created:Date.now()},{merge:true})}catch(e){}
   setTimeout(ctlBeat,2500);
   try{CTL.unsub.push(db.collection('ctl').doc(uid).onSnapshot(sn=>{const d=(sn&&sn.exists&&sn.data())||{};CTL.ban=!!d.ban;CTL.banWhy=d.banWhy||'';CTL.mute=!!d.mute;ctlApplyMute();ctlGifts(d.gifts);ctlRefreshBlock()},()=>{}))}catch(e){}
-  try{CTL.unsub.push(db.collection('cfg').doc('global').onSnapshot(sn=>{const d=(sn&&sn.exists&&sn.data())||{};CTL.maint=!!d.maint;CTL.maintMsg=d.maintMsg||'';ctlRefreshBlock();ctlAnn(d.ann)},()=>{}))}catch(e){}
+  try{CTL.unsub.push(db.collection('cfg').doc('global').onSnapshot(sn=>{const d=(sn&&sn.exists&&sn.data())||{};CTL.maint=!!d.maint;CTL.maintMsg=d.maintMsg||'';ctlRefreshBlock();ctlAnn(d.ann);try{liveApply(d)}catch(e){}},()=>{}))}catch(e){}
   clearInterval(CTL.hb);CTL.hb=setInterval(ctlBeat,120000)}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)ctlBeat()});
 setTimeout(ctlBoot,1500);
 /* زر لوحة المالك بقائمة "حسابي" — يطلع لك بس */
 const _accMenu31=accMenu;accMenu=function(){const r=_accMenu31.apply(this,arguments);
   if(isOwner()){const row=document.querySelector('.acc .dlg .row');if(row&&!document.getElementById('own31')){const b=document.createElement('button');b.id='own31';b.className='pbtn';b.textContent='👑 لوحة المالك';b.style.marginTop='6px';b.onclick=()=>{window.open('admin.html','_blank')};row.parentNode.insertBefore(b,row.nextSibling)}}return r};
+/* ================= v32: موسيقى اللوبي مقفولة + أشياء تتحكم فيها من لوحة المالك (المتجر، الفعاليات، الموسم، البطولات، البلاغات) ================= */
+/* ---------- موسيقى اللوبي: مشالة بطلب المالك ---------- */
+lbMusicTick=function(){const a=LBMUS&&LBMUS.el;if(a&&!a.paused){try{a.pause()}catch(e){}}};
+
+/* ---------- القيم الأصلية (نرجع لها إذا المالك شال التعديل) ---------- */
+const LIVE={shop:{},event:null,season:null,tours:{}};
+const LIVE_DEF={shop:{},tours:{}};
+for(const cat of['shape','color','table'])for(const it of SHOP[cat])if(it.price!=null)LIVE_DEF.shop[cat+'.'+it.id]=it.price;
+for(const e of EMOTES)LIVE_DEF.shop['emote.'+e[0]]=e[2];
+for(const k in TOURS)LIVE_DEF.tours[k]={name:TOURS[k].name,prize:TOURS[k].prize.slice()};
+
+/* ---------- يوصلنا من cfg/global (نفس المستمع حق الصيانة والإعلانات) ---------- */
+function liveApply(d){d=d||{};
+  /* أسعار المتجر */
+  const sp=d.shop||{};LIVE.shop=sp;
+  for(const k in LIVE_DEF.shop){const[cat,id]=k.split('.'),v=(sp[k]!=null&&isFinite(sp[k]))?Math.max(0,Math.round(+sp[k])):LIVE_DEF.shop[k];
+    if(cat==='emote'){const e=EMOTES.find(x=>x[0]===id);if(e)e[2]=v}else{const it=SHOP[cat].find(x=>x.id===id);if(it)it.price=v}}
+  /* البطولات: الاسم والجوائز */
+  LIVE.tours=d.tours||{};
+  for(const k in LIVE_DEF.tours){const o=LIVE.tours[k]||{},D=LIVE_DEF.tours[k];TOURS[k].name=(o.name||'').trim()||D.name;
+    TOURS[k].prize=D.prize.map((p,i)=>(o.prize&&o.prize[i]!=null&&isFinite(o.prize[i]))?Math.max(0,Math.round(+o.prize[i])):p)}
+  LIVE.event=d.event&&d.event.title?d.event:null;
+  LIVE.season=d.season&&(d.season.name||d.season.end)?d.season:null;
+  try{if(LOBBY.on&&mode==='lobby')lbEvents()}catch(e){}}
+
+/* ---------- الموسم ---------- */
+function seasonEnd(){const s=LIVE.season;if(s&&s.end&&s.end>Date.now())return new Date(s.end);const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1)}
+function seasonName(){return(LIVE.season&&LIVE.season.name)||'موسم الديرة'}
+
+/* ---------- الفعالية: مضاعفة الكوينز أو الخبرة ---------- */
+function eventOn(){const e=LIVE.event,t=Date.now();return!!(e&&(!e.start||t>=e.start)&&(!e.end||t<e.end))}
+function eventMult(kind){if(!eventOn())return 1;const b=LIVE.event.boost;return b===kind||b==='both'?2:1}
+{const _ac=addCoins;addCoins=function(n){if(n>0)n=Math.round(n*eventMult('coins'));return _ac.call(this,n)}}
+{const _ax=addXP;addXP=function(n){if(n>0)n=Math.round(n*eventMult('xp'));return _ax.call(this,n)}}
+
+/* ---------- بطولة الجمعة: موعد يحدده المالك ---------- */
+{const _nf=nextFriday20;nextFriday20=function(){const f=LIVE.tours.fri;if(f&&f.at&&f.at+(f.hours||3)*36e5>Date.now())return new Date(f.at);return _nf()}}
+{const _fo=friOpen;friOpen=function(){const f=LIVE.tours.fri;if(f&&f.at&&f.at+(f.hours||3)*36e5>Date.now()){const t=Date.now();return t>=f.at&&t<f.at+(f.hours||3)*36e5}return _fo()}}
+
+/* ---------- بنر الفعاليات باللوبي ---------- */
+{const _el=eventsList;eventsList=function(){const L=_el();const d=new Date();
+  for(const x of L){if(x.k==='pass')x.t=seasonName(),x.s='باقي '+Math.max(0,Math.ceil((seasonEnd()-d)/864e5))+' يوم · '+passClaimable()+' مكافأة تنتظرك';
+    if(x.k==='tour'){x.t=TOURS.fri.name;x.s=(friOpen()?'شغّالة الحين! ادخل':'تبدأ بعد '+fmtLeft(nextFriday20()-d))+' · الجائزة '+TOURS.fri.prize[0]+' عملة'}}
+  if(eventOn()){const e=LIVE.event,b=e.boost==='coins'?'💰 كوينز ×2':e.boost==='xp'?'⭐ خبرة ×2':e.boost==='both'?'💰⭐ كوينز وخبرة ×2':'';
+    L.unshift({t:'🎉 '+e.title,s:[b,e.desc,e.end?'باقي '+fmtLeft(e.end-d):''].filter(Boolean).join(' · '),k:'ev',ac:'#e2b04a'})}
+  return L}}
+{const _vo=v7Open;v7Open=function(k){if(k==='ev'){const e=LIVE.event;if(e)toast('🎉 '+e.title+(e.desc?' — '+e.desc:''),4200);return}return _vo.apply(this,arguments)}}
+
+/* ---------- البلاغات: زر 🚩 جنب اسم خصمك بالمباراة الأونلاين ---------- */
+(function(){const css=`
+#rep32{position:absolute;top:50%;left:-38px;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,143,125,.55);background:rgba(40,12,8,.75);color:#ffb3a6;font-size:15px;display:grid;place-items:center;pointer-events:auto;cursor:pointer}
+.rep32 .dlg{max-height:92vh;overflow:auto}.rep32 h3{margin:4px 0}.rep32 .muted{margin:2px 0}
+.rep32 .rs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0}
+.rep32 .rs button{padding:9px 8px;border-radius:12px;border:1px solid rgba(255,214,140,.35);background:rgba(255,255,255,.05);color:#fff1d2;font:600 14px var(--f-body);text-align:right}
+.rep32 .rs button.on{border-color:#ff9a85;background:rgba(255,143,125,.14);color:#ffd2c9}
+`;const s=document.createElement('style');s.textContent=css;document.head.appendChild(s)})();
+const REP_WHY=[['voice','كلام غير لائق بالمايك'],['name','اسم أو صورة غير لائقة'],['cheat','غش أو تلاعب'],['other','شي ثاني']];
+const REP={done:{}};
+function repOpp(){try{const r=ONL.room||{};const uid=ONL.role==='host'?r.guest:r.host;return uid?{uid,name:(ONL.role==='host'?r.guestName:r.hostName)||ONL.oppName||'خصمك'}:null}catch(e){return null}}
+function repBtn(){const p=$('#oppP');let b=$('#rep32');const show=!!(p&&game&&game.online&&mode==='match'&&repOpp());
+  if(!show){if(b)b.remove();return}if(!b){b=document.createElement('button');b.id='rep32';b.title='بلّغ';b.textContent='🚩';b.onclick=e=>{e.stopPropagation();repDlg()};if(getComputedStyle(p).position==='static')p.style.position='relative';p.appendChild(b)}}
+setInterval(repBtn,1200);
+function repDlg(){const o=repOpp();if(!o)return;if(REP.done[o.uid]){toast('بلّغت عنه قبل ✅ الإدارة بتشوف البلاغ');return}let why='';
+  showLayer('<div class="scrim acc rep32" data-x="1"><div class="card dlg"><span class="tag" style="color:#ff9a8a">🚩 بلاغ</span><h3>تبلّغ عن '+esc(o.name)+'؟</h3><p class="muted">البلاغ يوصل للإدارة بس — خصمك ما يدري.</p><div class="rs">'+
+    REP_WHY.map(r=>'<button data-w="'+r[0]+'">'+r[1]+'</button>').join('')+'</div><input class="ain" id="repN" maxlength="140" placeholder="تفاصيل (اختياري)"><div class="st bad" id="aS"></div>'+
+    '<div class="row"><button class="gbtn danger" data-a="send">أرسل البلاغ</button><button class="pbtn" data-a="x">إلغاء</button></div></div></div>',
+    {send:()=>repSend(o,why),x:()=>closeLayer()});try{accUI()}catch(e){}
+  document.querySelectorAll('.rep32 .rs button').forEach(b=>b.onclick=()=>{why=b.dataset.w;document.querySelectorAll('.rep32 .rs button').forEach(x=>x.classList.toggle('on',x===b))})}
+async function repSend(o,why){if(!why){const s=$('#aS');if(s)s.textContent='اختر سبب البلاغ';return}
+  try{await ONL.db.collection('reports').add({by:ONL.user.uid,byName:S.name||'',target:o.uid,targetName:o.name,reason:why,note:(($('#repN')||{}).value||'').trim().slice(0,140),room:ONL.code||'',at:Date.now(),status:'open'});
+    REP.done[o.uid]=1;closeLayer();toast('✅ وصل بلاغك للإدارة، شكراً لك')}
+  catch(e){const s=$('#aS');if(s)s.textContent=onlErr(e)}}
+/* ---------- شريط الفعالية باللوبي + تحديث أيام الموسم ---------- */
+(function(){const s=document.createElement('style');s.textContent=`
+#ev32{position:fixed;z-index:55;top:calc(env(safe-area-inset-top,0px) + 64px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:min(440px,46vw);padding:6px 14px;border-radius:16px;border:1.5px solid #e2b04a;background:linear-gradient(180deg,rgba(60,36,12,.92),rgba(26,15,6,.92));color:#ffe9bd;font:700 12.5px/1.35 var(--f-body);direction:rtl;box-shadow:0 0 16px rgba(255,190,90,.35);pointer-events:auto;cursor:pointer;white-space:nowrap}
+#ev32 span{overflow:hidden;text-overflow:ellipsis}#ev32 small{font-weight:600;color:#ffd98a;opacity:.9}
+@media (orientation:portrait){#ev32{top:calc(env(safe-area-inset-top,0px) + 112px);max-width:88vw}}`;document.head.appendChild(s)})();
+function ev32(){let el=$('#ev32');const show=eventOn()&&LOBBY.on&&mode==='lobby'&&!document.querySelector('.scrim');
+  if(!show){if(el)el.remove();}else{const e=LIVE.event,b=e.boost==='coins'?'💰 ×2':e.boost==='xp'?'⭐ ×2':e.boost==='both'?'💰⭐ ×2':'';
+    if(!el){el=document.createElement('button');el.id='ev32';el.onclick=()=>v7Open('ev');document.body.appendChild(el)}
+    const h='<span>🎉 '+esc(e.title)+'</span>'+(b?'<small>'+b+'</small>':'')+(e.end?'<small>· '+fmtLeft(e.end-Date.now())+'</small>':'');if(el.dataset.h!==h){el.innerHTML=h;el.dataset.h=h}}
+  const sm=$('#lbSeason .t small');if(sm){const t=Math.max(0,Math.ceil((seasonEnd()-new Date())/864e5))+' يوم باقي';if(sm.textContent!==t)sm.textContent=t}}
+setInterval(ev32,1000);
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}

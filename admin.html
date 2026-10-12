@@ -57,7 +57,7 @@ textarea.in{min-height:84px;resize:vertical}
 .empty{color:var(--muted);text-align:center;padding:18px}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;background:rgba(14,9,5,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
 nav .in{display:flex;width:100%;max-width:760px}
-nav button{flex:1;background:none;border:0;padding:6px 2px;border-radius:12px;color:var(--muted);font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button{flex:1;min-width:0;background:none;border:0;padding:6px 1px;border-radius:12px;color:var(--muted);font-size:11px;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:2px}
 nav button i{font-style:normal;font-size:20px}
 nav button.on{color:var(--gold2);background:rgba(255,214,140,.09)}
 .tab{display:none}.tab.on{display:block}
@@ -84,6 +84,24 @@ nav button.on{color:var(--gold2);background:rgba(255,214,140,.09)}
 .gate .big{font-size:52px}
 .gbtn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:14px;padding:12px;border-radius:13px;border:0;background:#fff;color:#222;font-weight:700}
 .upd{font-size:12px;color:var(--muted);margin-top:8px}
+nav button{position:relative}
+.bdg{position:absolute;top:2px;left:calc(50% - 22px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#2a0a04;font:700 11px/18px var(--fb);font-style:normal}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:8px}.grid2 label,label{font-size:13px;color:var(--muted)}
+label .in{margin-top:4px}
+input[type=datetime-local].in{min-width:0;max-width:100%;font-size:13.5px;padding:9px 6px}
+.grid2>label,.prz>label{min-width:0}
+body{overflow-x:hidden}
+.srow2{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(226,176,74,.1)}
+.srow2 .nm2{flex:1}.srow2 small{color:var(--muted);display:block;font-size:12px}
+.srow2 input{width:92px;text-align:center}
+.srow2.chg input{border-color:var(--gold);color:var(--gold2)}
+.rep{padding:12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.rep .top{display:flex;align-items:center;gap:10px}.rep .why{display:inline-block;margin:8px 0 4px;padding:2px 9px;border-radius:9px;background:rgba(255,143,125,.14);color:var(--bad);font-size:13px;font-weight:700}
+.rep .note{font-size:14px;margin:4px 0}.rep .by{font-size:12.5px;color:var(--muted)}
+.rep .row{margin-top:8px}.rep .btn{padding:7px 12px;font-size:13px}
+.tgrp{padding:10px 0;border-bottom:1px solid rgba(226,176,74,.12)}.tgrp:last-child{border:0}
+.prz{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:6px}.prz label{font-size:11.5px;text-align:center}.prz input{text-align:center;padding:8px 4px}
+
 </style>
 </head>
 <body>
@@ -120,9 +138,6 @@ nav button.on{color:var(--gold2);background:rgba(255,214,140,.09)}
     <div class="row" style="margin-top:10px"><button class="btn" id="annSend">أرسل الإعلان</button><button class="btn sec" id="annDel">شيل الإعلان الحالي</button></div>
     <div id="annCur"></div>
   </div>
-</section>
-
-<section class="tab" id="t-maint">
   <div class="card"><h2>🛠️ وضع الصيانة</h2><p class="hint">لما يكون شغّال: اللعبة تنقفل على الكل وتطلع لهم رسالة الصيانة. أنت بس تقدر تدخل عادي.</p>
     <div class="switch" id="mSw"><div><b id="mState">مطفي</b><div class="hint" style="margin:0">اللعبة شغّالة للكل</div></div><button class="tg" id="mTg" aria-label="تشغيل الصيانة"></button></div>
     <div class="sec-t">رسالة الصيانة</div>
@@ -131,12 +146,49 @@ nav button.on{color:var(--gold2);background:rgba(255,214,140,.09)}
   </div>
 </section>
 
+<section class="tab" id="t-reports">
+  <div class="card"><h2>🚩 البلاغات</h2><p class="hint">اللاعبين يبلّغون عن خصمهم من زر 🚩 بالمباراة الأونلاين.</p>
+    <div class="chips"><button class="chip on" data-r="open">الجديدة</button><button class="chip" data-r="done">اللي خلصت</button></div>
+    <div class="list" id="rlist"></div>
+  </div>
+</section>
+
+<section class="tab" id="t-shop">
+  <div class="card"><h2>🛒 أسعار المتجر</h2><p class="hint">غيّر السعر واضغط حفظ — يتغير عند كل اللاعبين فوراً. اللي تخليه فاضي يرجع لسعره الأصلي.</p>
+    <div id="shopF"></div>
+    <div class="row" style="margin-top:12px;position:sticky;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--panel);padding:8px 0"><button class="btn" id="shopSave">احفظ الأسعار</button><button class="btn sec" id="shopReset">رجّع كل الأسعار الأصلية</button></div>
+  </div>
+</section>
+
+<section class="tab" id="t-events">
+  <div class="card"><h2>🎉 فعالية</h2><p class="hint">تطلع أول شي ببنر اللوبي. وتقدر تخليها تضاعف الكوينز أو الخبرة لين تخلص.</p>
+    <input class="in" id="evT" maxlength="40" placeholder="اسم الفعالية — مثال: ويكند الدامة">
+    <input class="in" id="evD" maxlength="80" placeholder="وصف قصير (اختياري)" style="margin-top:8px">
+    <div class="sec-t">المضاعفة</div>
+    <div class="chips" id="evB"><button class="chip on" data-b="">بدون</button><button class="chip" data-b="coins">💰 كوينز ×2</button><button class="chip" data-b="xp">⭐ خبرة ×2</button><button class="chip" data-b="both">الثنتين ×2</button></div>
+    <div class="grid2"><label>تبدأ<input class="in" id="evS" type="datetime-local"></label><label>تخلص<input class="in" id="evE" type="datetime-local"></label></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="evSave">شغّل الفعالية</button><button class="btn sec" id="evStop">وقّف الفعالية</button></div>
+    <div id="evCur"></div>
+  </div>
+  <div class="card"><h2>🏅 الموسم</h2><p class="hint">اسم الموسم ومتى يخلص (يطلع باللوبي). إذا ما حددت، يخلص آخر كل شهر.</p>
+    <input class="in" id="seN" maxlength="30" placeholder="موسم الديرة">
+    <label style="display:block;margin-top:8px">يخلص<input class="in" id="seE" type="datetime-local"></label>
+    <div class="row" style="margin-top:10px"><button class="btn" id="seSave">احفظ الموسم</button><button class="btn sec" id="seReset">رجّع الافتراضي</button></div>
+  </div>
+  <div class="card"><h2>🏆 البطولات</h2><p class="hint">الأسماء والجوائز (بالكوينز) للمركز الأول، الثاني، نصف النهائي، والباقي.</p>
+    <div id="tourF"></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="tourSave">احفظ البطولات</button><button class="btn sec" id="tourReset">رجّع الافتراضي</button></div>
+  </div>
+</section>
+
 </div>
 <nav><div class="in">
-  <button class="on" data-t="stats"><i>📊</i>الإحصائيات</button>
+  <button class="on" data-t="stats"><i>📊</i>الرئيسية</button>
   <button data-t="players"><i>👥</i>اللاعبين</button>
-  <button data-t="ann"><i>📢</i>الإعلانات</button>
-  <button data-t="maint"><i>🛠️</i>الصيانة</button>
+  <button data-t="reports"><i>🚩</i>البلاغات<em class="bdg" id="rBdg" hidden></em></button>
+  <button data-t="shop"><i>🛒</i>المتجر</button>
+  <button data-t="events"><i>🎉</i>الفعاليات</button>
+  <button data-t="ann"><i>⚙️</i>التحكم</button>
 </div></nav>
 </div>
 
@@ -175,10 +227,10 @@ $('#out').onclick=()=>auth.signOut();
 
 /* ---------- التنقل ---------- */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{closeSheet();document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='t-'+b.dataset.t));if(b.dataset.t==='players'&&!$('#plist').children.length)loadPlayers();window.scrollTo(0,0)});
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='t-'+b.dataset.t));if(b.dataset.t==='players'&&!$('#plist').children.length)loadPlayers();if(b.dataset.t==='reports')loadReports();if(b.dataset.t==='shop')drawShop();if(b.dataset.t==='events')drawEvents();window.scrollTo(0,0)});
 
 let started=false;
-function start(){if(started)return;started=true;loadStats();setInterval(()=>{if(!document.hidden&&$('#t-stats').classList.contains('on'))loadStats()},30000);watchCfg()}
+function start(){if(started)return;started=true;loadStats();repBadge();setInterval(()=>{if(!document.hidden)repBadge()},60000);setInterval(()=>{if(!document.hidden&&$('#t-stats').classList.contains('on'))loadStats()},30000);watchCfg()}
 
 /* ---------- الإحصائيات ---------- */
 async function cnt(q){try{if(q.count){const s=await q.count().get();return s.data().count}}catch(e){}const s=await q.get();return s.size}
@@ -258,6 +310,69 @@ $('#annDel').onclick=async()=>{try{await CFG.set({ann:null},{merge:true});toast(
 $('#mTg').onclick=async()=>{const on=!CF.maint;if(on&&!confirm('تقفل اللعبة على كل اللاعبين؟'))return;
   try{await CFG.set({maint:on,maintMsg:$('#mMsg').value.trim()},{merge:true});toast(on?'🛠️ الصيانة شغّالة':'✅ اللعبة رجعت للكل')}catch(e){toast(errMsg(e))}};
 $('#mSave').onclick=async()=>{try{await CFG.set({maintMsg:$('#mMsg').value.trim()},{merge:true});toast('✅ انحفظت')}catch(e){toast(errMsg(e))}};
+
+/* ---------- حفظ حقل كامل بـ cfg/global (يستبدله، ما يدمجه) ---------- */
+async function cfgPut(field,val){const o={};o[field]=val;try{await CFG.update(o)}catch(e){if(e&&e.code==='permission-denied')throw e;await CFG.set(o,{merge:true})}}
+
+/* ---------- البلاغات ---------- */
+const WHY={voice:'كلام غير لائق بالمايك',name:'اسم أو صورة غير لائقة',cheat:'غش أو تلاعب',other:'شي ثاني'};
+const R=db.collection('reports');let rFilt='open';
+async function repBadge(){try{const n=await cnt(R.where('status','==','open'));const b=$('#rBdg');b.hidden=!n;b.textContent=n>99?'99+':n}catch(e){}}
+document.querySelectorAll('[data-r]').forEach(c=>c.onclick=()=>{document.querySelectorAll('[data-r]').forEach(x=>x.classList.toggle('on',x===c));rFilt=c.dataset.r;loadReports()});
+async function loadReports(){const el=$('#rlist');el.innerHTML='<div class="empty">نحمّل…</div>';
+  try{const r=await R.where('status','==',rFilt).limit(100).get();const docs=r.docs.slice().sort((a,b)=>(b.data().at||0)-(a.data().at||0));
+    if(!docs.length){el.innerHTML='<div class="empty">'+(rFilt==='open'?'ما فيه بلاغات جديدة 👌':'ما فيه')+'</div>';return}
+    const per={};docs.forEach(d=>{const t=d.data().target;per[t]=(per[t]||0)+1});
+    el.innerHTML=docs.map(d=>{const x=d.data();return'<div class="rep"><div class="top"><div class="av">'+esc((x.targetName||'؟').trim()[0])+'</div><div style="flex:1;min-width:0"><b>'+esc(x.targetName||'—')+'</b>'+(per[x.target]>1?'<span class="tag ban">'+per[x.target]+' بلاغات</span>':'')+'<div class="by">'+ago(x.at).replace('أونلاين الحين','الحين')+'</div></div></div>'+
+      '<span class="why">'+esc(WHY[x.reason]||x.reason||'')+'</span>'+(x.note?'<div class="note">"'+esc(x.note)+'"</div>':'')+'<div class="by">بلّغ عنه: '+esc(x.byName||'—')+(x.room?' · غرفة '+esc(x.room):'')+'</div>'+
+      '<div class="row"><button class="btn sec" data-op="'+esc(x.target)+'">افتح اللاعب</button>'+(x.status==='open'?'<button class="btn grn" data-done="'+d.id+'">✓ خلصت</button>':'<button class="btn sec" data-re="'+d.id+'">رجّعه جديد</button>')+'</div></div>'}).join('')}
+  catch(e){el.innerHTML='<div class="empty">'+esc(errMsg(e))+'</div>'}}
+$('#rlist').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.op)return openPlayer(b.dataset.op);
+  const id=b.dataset.done||b.dataset.re;if(!id)return;try{await R.doc(id).update({status:b.dataset.done?'done':'open',doneAt:Date.now()});toast(b.dataset.done?'✅ تم':'رجع للجديدة');loadReports();repBadge()}catch(err){toast(errMsg(err))}});
+
+/* ---------- المتجر ---------- */
+const CAT=[['shape','🎲 شكل القطع',[['classic','كلاسيكي',0],['dome','قبّة',0],['coin','عملة',60],['crown','تاج',150]]],
+  ['color','🎨 لون القطع',[['ivory','عاجي',0],['ruby','ياقوتي',0],['onyx','أسود',0],['teal','فيروزي',40],['navy','كحلي',60],['jade','يشم',80]]],
+  ['table','🪵 الطاولة',[['wood','خشب الساج',0],['sadu','سدو',100],['marble','رخام',120]]],
+  ['emote','💃 الحركات',[['wave','تحية',0],['clap','تصفيق',0],['think','تفكير',0],['laugh','ضحك',40],['bow','انحناءة',60],['dance','رقص',80],['ardha','العرضة',120]]]];
+function drawShop(){const sp=CF.shop||{};$('#shopF').innerHTML=CAT.map(([c,t,items])=>'<div class="sec-t">'+t+'</div>'+items.map(([id,nm,def])=>{const k=c+'.'+id,v=sp[k];
+    return'<div class="srow2'+(v!=null?' chg':'')+'"><div class="nm2">'+nm+'<small>الأصلي: '+(def?def+' 🪙':'مجاني')+'</small></div><input class="in" type="number" inputmode="numeric" min="0" data-k="'+k+'" data-d="'+def+'" value="'+(v!=null?v:'')+'" placeholder="'+def+'"></div>'}).join('')).join('');
+  $('#shopF').querySelectorAll('input').forEach(i=>i.oninput=()=>i.closest('.srow2').classList.toggle('chg',i.value!==''))}
+$('#shopSave').onclick=async()=>{const m={};$('#shopF').querySelectorAll('input').forEach(i=>{if(i.value!==''&&isFinite(i.value)){const v=Math.max(0,Math.round(+i.value));if(v!==+i.dataset.d)m[i.dataset.k]=v}});
+  try{await cfgPut('shop',m);toast('✅ انحفظت الأسعار ('+Object.keys(m).length+' تعديل)')}catch(e){toast(errMsg(e))}};
+$('#shopReset').onclick=async()=>{if(!confirm('ترجّع كل الأسعار الأصلية؟'))return;try{await cfgPut('shop',{});toast('✅ رجعت الأسعار الأصلية');setTimeout(drawShop,400)}catch(e){toast(errMsg(e))}};
+
+/* ---------- الفعاليات والموسم والبطولات ---------- */
+const TDEF={cup:{name:'كأس المباركية',prize:[300,120,60,25]},fri:{name:'بطولة الجمعة الكبرى',prize:[600,250,120,40]}};
+const toLocal=t=>{if(!t)return'';const d=new Date(t-new Date(t).getTimezoneOffset()*6e4);return d.toISOString().slice(0,16)};
+const fromLocal=v=>v?new Date(v).getTime():null;
+const fmtD=t=>new Date(t).toLocaleString('ar-KW',{weekday:'long',day:'numeric',month:'long',hour:'numeric',minute:'2-digit'});
+let evBoost='';
+document.querySelectorAll('#evB .chip').forEach(c=>c.onclick=()=>{evBoost=c.dataset.b;document.querySelectorAll('#evB .chip').forEach(x=>x.classList.toggle('on',x===c))});
+function drawEvents(){const e=CF.event,se=CF.season||{},tr=CF.tours||{};
+  if(e){$('#evT').value=e.title||'';$('#evD').value=e.desc||'';evBoost=e.boost||'';$('#evS').value=toLocal(e.start);$('#evE').value=toLocal(e.end)}
+  else{const n=Date.now();if(!$('#evS').value)$('#evS').value=toLocal(n);if(!$('#evE').value)$('#evE').value=toLocal(n+3*864e5)}
+  document.querySelectorAll('#evB .chip').forEach(x=>x.classList.toggle('on',x.dataset.b===evBoost));
+  const now=Date.now(),live=e&&(!e.start||now>=e.start)&&(!e.end||now<e.end);
+  $('#evCur').innerHTML=e?'<div class="prev"><b>'+(live?'🟢 شغّالة الحين':e.end&&now>=e.end?'⚪ خلصت':'🕓 بتبدأ '+fmtD(e.start))+'</b> · '+esc(e.title)+(e.end?'<div class="upd">تخلص: '+fmtD(e.end)+'</div>':'')+'</div>':'<div class="hint" style="margin-top:10px">ما فيه فعالية حالياً.</div>';
+  $('#seN').value=se.name||'';$('#seE').value=toLocal(se.end);
+  $('#tourF').innerHTML=Object.keys(TDEF).map(k=>{const o=tr[k]||{},D=TDEF[k],P=['الأول','الثاني','نصف النهائي','الباقي'];
+    return'<div class="tgrp"><input class="in" data-tn="'+k+'" maxlength="30" value="'+esc(o.name||'')+'" placeholder="'+D.name+'"><div class="prz">'+D.prize.map((p,i)=>'<label>'+P[i]+'<input class="in" type="number" inputmode="numeric" min="0" data-tp="'+k+'" data-i="'+i+'" value="'+(o.prize&&o.prize[i]!=null?o.prize[i]:'')+'" placeholder="'+p+'"></label>').join('')+'</div>'+
+      (k==='fri'?'<div class="grid2"><label>الموعد (بدال كل جمعة ٨)<input class="in" id="frAt" type="datetime-local" value="'+toLocal(o.at)+'"></label><label>مدتها بالساعات<input class="in" id="frH" type="number" min="1" max="72" value="'+(o.hours||3)+'"></label></div>':'')+'</div>'}).join('')}
+$('#evSave').onclick=async()=>{const t=$('#evT').value.trim();if(!t){toast('اكتب اسم الفعالية');return}const st=fromLocal($('#evS').value),en=fromLocal($('#evE').value);
+  if(st&&en&&en<=st){toast('وقت النهاية لازم بعد البداية');return}
+  try{await cfgPut('event',{title:t,desc:$('#evD').value.trim(),boost:evBoost,start:st,end:en,id:Date.now()});toast('🎉 الفعالية انحفظت');setTimeout(drawEvents,400)}catch(e){toast(errMsg(e))}};
+$('#evStop').onclick=async()=>{if(!confirm('توقف الفعالية؟'))return;try{await cfgPut('event',null);$('#evT').value='';$('#evD').value='';toast('وقفت الفعالية');setTimeout(drawEvents,400)}catch(e){toast(errMsg(e))}};
+$('#seSave').onclick=async()=>{const n=$('#seN').value.trim(),en=fromLocal($('#seE').value);if(en&&en<Date.now()){toast('التاريخ لازم بالمستقبل');return}
+  try{await cfgPut('season',{name:n,end:en});toast('✅ انحفظ الموسم')}catch(e){toast(errMsg(e))}};
+$('#seReset').onclick=async()=>{try{await cfgPut('season',null);$('#seN').value='';$('#seE').value='';toast('رجع الموسم الافتراضي')}catch(e){toast(errMsg(e))}};
+$('#tourSave').onclick=async()=>{const out={};for(const k in TDEF){const o={},nm=$('[data-tn="'+k+'"]').value.trim();if(nm)o.name=nm;
+    const pr=[...document.querySelectorAll('[data-tp="'+k+'"]')].map(i=>i.value===''?null:Math.max(0,Math.round(+i.value)));if(pr.some(v=>v!=null))o.prize=pr;
+    if(k==='fri'){const at=fromLocal($('#frAt').value);if(at){o.at=at;o.hours=Math.max(1,Math.min(72,+$('#frH').value||3))}}
+    if(Object.keys(o).length)out[k]=o}
+  try{await cfgPut('tours',out);toast('✅ انحفظت البطولات')}catch(e){toast(errMsg(e))}};
+$('#tourReset').onclick=async()=>{if(!confirm('ترجّع البطولات للافتراضي؟'))return;try{await cfgPut('tours',{});toast('رجعت للافتراضي');setTimeout(drawEvents,400)}catch(e){toast(errMsg(e))}};
 </script>
 </body>
 </html>
