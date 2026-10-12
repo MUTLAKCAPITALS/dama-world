@@ -4438,7 +4438,7 @@ updateAmbience=function(dt){_updateAmbience23.apply(this,arguments);if(!AMB.on||
   if(th.key==='kw'){const s=clamp((-(lp.z)-50)/58,0,1)*(inH?0:.55);
     AMB.sea.gain.setTargetAtTime(s,n,.6);if(s>.15&&Math.random()<dt*.18*s)gullCry(.018*s+.006)}
   /* الهمهمة (سوالف الناس) مطفية بطلب صاحب اللعبة — نرجع لها بحل أحسن */
-  AMB.chat.gain.cancelScheduledValues(n);AMB.chat.gain.setValueAtTime(0,n);for(const vo of AMB.voices)vo.g.gain.setTargetAtTime(0,n,.05);
+  if(!(S.settings.crowd>0)){AMB.chat.gain.cancelScheduledValues(n);AMB.chat.gain.setValueAtTime(0,n);for(const vo of AMB.voices)vo.g.gain.setTargetAtTime(0,n,.05)}
   const z=zoneAt(lp);if(z&&z.id==='souq'&&!inH&&!(game&&mode==='match')&&Math.random()<dt*1.2)footstep(rnd(.004,.01),true);
   /* خطوات اللاعب موجودة أصلاً باللعبة */};
 /* صوت خفيف لكل زر بالواجهة */
@@ -4482,7 +4482,7 @@ const _spawnCars24=spawnCars;spawnCars=function(){const r=_spawnCars24.apply(thi
 const ENG={buf:{},on:false};
 function engLoad(a){if(ENG.loading)return;ENG.loading=true;for(const k of['idle','drive'])fetch('snd/car_'+k+'.wav').then(r=>r.arrayBuffer()).then(ab=>new Promise((res,rej)=>a.decodeAudioData(ab,res,rej))).then(b=>{ENG.buf[k]=b}).catch(e=>console.warn('eng',k,e))}
 function engStart(a){if(ENG.on||!ENG.buf.idle||!ENG.buf.drive||!AMB.master)return;ENG.on=true;
-  for(const k of['idle','drive']){const s=a.createBufferSource();s.buffer=ENG.buf[k];s.loop=true;const g=a.createGain();g.gain.value=0;s.connect(g).connect(AMB.master);s.start(0,Math.random()*2);ENG[k]={s,g}}}
+  for(const k of['idle','drive']){const s=a.createBufferSource();s.buffer=ENG.buf[k];s.loop=true;const g=a.createGain();g.gain.value=0;s.connect(g).connect((typeof SND!=='undefined'&&SND.car)||AMB.master);s.start(0,Math.random()*2);ENG[k]={s,g}}}
 const _updateAmbience24=updateAmbience;
 updateAmbience=function(dt){_updateAmbience24.apply(this,arguments);if(!AC||!AMB.on)return;engLoad(AC);engStart(AC);if(!ENG.on)return;const n=AC.currentTime;
   let best=null,bd=1e9;if(W&&W.cars&&mode==='explore'){const lp=camera.position;for(const c of W.cars){const d=Math.hypot(c.g.position.x-lp.x,c.g.position.z-lp.z);if(d<bd){bd=d;best=c}}}
@@ -4951,6 +4951,114 @@ function ev32(){let el=$('#ev32');const show=eventOn()&&LOBBY.on&&mode==='lobby'
     const h='<span>🎉 '+esc(e.title)+'</span>'+(b?'<small>'+b+'</small>':'')+(e.end?'<small>· '+fmtLeft(e.end-Date.now())+'</small>':'');if(el.dataset.h!==h){el.innerHTML=h;el.dataset.h=h}}
   const sm=$('#lbSeason .t small');if(sm){const t=Math.max(0,Math.ceil((seasonEnd()-new Date())/864e5))+' يوم باقي';if(sm.textContent!==t)sm.textContent=t}}
 setInterval(ev32,1000);
+/* ================= v33: حجم الأزرار، عصا حركة تتحرك وتكبر، وتحكم بكل صوت لحاله ================= */
+const ST33=S.settings;
+if(ST33.vol==null)ST33.vol=1;if(ST33.sfx==null)ST33.sfx=.8;if(ST33.car==null)ST33.car=.7;if(ST33.opp==null)ST33.opp=1;if(ST33.crowd==null)ST33.crowd=0;
+
+/* ================= الأصوات ================= */
+const SND={ctx:null};
+function sndInit(a){if(!a||SND.ctx===a)return;SND.ctx=a;const g=()=>a.createGain();
+  SND.master=g();SND.sfx=g();SND.car=g();SND.crowd=g();
+  _conn33.call(SND.master,a.destination);_conn33.call(SND.sfx,SND.master);_conn33.call(SND.car,SND.master);SND.crowd.gain.value=0;sndTick()}
+/* كل شي يروح للسماعة يمر على "الصوت العام"؛ واللي ما له قناة (نقرات، أحجار) يروح لقناة أصوات اللعبة */
+const _conn33=AudioNode.prototype.connect;
+AudioNode.prototype.connect=function(dest){try{if(dest&&typeof AudioDestinationNode!=='undefined'&&dest instanceof AudioDestinationNode){if(SND.ctx!==dest.context)sndInit(dest.context);
+    if(this!==SND.master&&SND.master){const args=[].slice.call(arguments);args[0]=SND.toSfx?SND.sfx:SND.master;return _conn33.apply(this,args)}}}catch(e){}return _conn33.apply(this,arguments)};
+/* أصوات الأحجار والفوز (tone و knock) تروح لقناة أصوات اللعبة */
+{const _t=tone;tone=function(){SND.toSfx=true;try{return _t.apply(this,arguments)}finally{SND.toSfx=false}}}
+{const _k=knock;knock=function(){SND.toSfx=true;try{return _k.apply(this,arguments)}finally{SND.toSfx=false}}}
+/* نقرة الأزرار تصير من أصوات اللعبة بدال الأجواء */
+uiClick=function(){try{if(!AC||!SND.sfx)return;const a=AC,n=a.currentTime,o=a.createOscillator(),g=a.createGain();o.type='triangle';o.frequency.setValueAtTime(1250,n);o.frequency.exponentialRampToValueAtTime(820,n+.06);
+  g.gain.setValueAtTime(.05,n);g.gain.exponentialRampToValueAtTime(.0001,n+.08);o.connect(g).connect(SND.sfx);o.start(n);o.stop(n+.1)}catch(e){}};
+function sndSet(node,v){try{if(node)node.gain.setTargetAtTime(Math.max(0,v),SND.ctx.currentTime,.08)}catch(e){}}
+function sndTick(){const s=S.settings;if(SND.ctx){sndSet(SND.master,s.vol);sndSet(SND.sfx,s.sfx);sndSet(SND.car,s.car);sndSet(SND.crowd,s.crowd*1.2);
+    try{if(typeof AMB!=='undefined'&&AMB.master)sndSet(AMB.master,s.amb)}catch(e){}
+    /* همهمة الناس: نمرّرها على قناتها */
+    try{if(typeof AMB!=='undefined'&&AMB.chat&&!SND.crowdOn){AMB.chat.disconnect();AMB.chat.connect(SND.crowd);_conn33.call(SND.crowd,AMB.master);SND.crowdOn=true}}catch(e){}}
+  try{if(typeof VC!=='undefined'&&VC.audio){VC.audio.volume=Math.max(0,Math.min(1,s.opp*s.vol));if(s.opp<=0.001||s.vol<=0.001)VC.audio.muted=true;else if(s.oppVoice!==false)VC.audio.muted=false}}catch(e){}}
+setInterval(sndTick,300);
+const SND_ROWS=[['vol','🔊 الصوت العام','يرفع أو ينزّل كل الأصوات مرة وحدة'],['music','🎵 الموسيقى','ألحان العالم المفتوح'],['sfx','🎲 أصوات اللعبة والأزرار','الأحجار، الأكل، الفوز، ونقرة الأزرار'],
+  ['amb','🌊 البحر والطبيعة','الموج، الهوا، النوارس، النار، والخطوات'],['car','🚗 السيارات','صوت مكينة الوانيت'],['opp','🎙️ صوت الخصم','صوته بالمايك وقت المباراة'],['crowd','👥 همهمة الناس','سوالف الناس حولك (مطفية من البداية)']];
+function sndHtml(){const s=S.settings;return'<div class="snd33">'+SND_ROWS.map(([k,t,d])=>{const v=s[k]==null?(k==='music'?.4:.7):s[k];
+  return'<div class="setrow"><label>'+t+'<small>'+d+'</small></label><div class="sv"><input type="range" min="0" max="1" step="0.05" data-snd="'+k+'" value="'+v+'"><b>'+Math.round(v*100)+'</b></div></div>'}).join('')+
+  '<div class="row" style="margin-top:8px"><button class="gbtn" data-snd-all="0">🔇 كتم الكل</button><button class="gbtn" data-snd-all="1">🔊 رجّع الافتراضي</button></div></div>'}
+const SND_DEF={vol:1,music:.4,sfx:.8,amb:.7,car:.7,opp:1,crowd:0};
+function sndBind(root){root.querySelectorAll('[data-snd]').forEach(i=>i.oninput=()=>{const k=i.dataset.snd;S.settings[k]=+i.value;i.nextElementSibling.textContent=Math.round(i.value*100);sndTick();persist()});
+  root.querySelectorAll('[data-snd-all]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const on=b.dataset.sndAll==='1';
+    for(const[k]of SND_ROWS)S.settings[k]=on?SND_DEF[k]:0;if(!on)S.settings.vol=0;persist();sndTick();
+    root.querySelectorAll('[data-snd]').forEach(i=>{i.value=S.settings[i.dataset.snd];i.nextElementSibling.textContent=Math.round(i.value*100)});toast(on?'رجعت الأصوات':'انكتمت كل الأصوات')})}
+(function(){const s=document.createElement('style');s.textContent=`
+.snd33 .setrow{display:flex;align-items:center;justify-content:space-between;gap:10px}.snd33 .setrow label{flex:1;min-width:0}
+.snd33 .sv{display:flex;align-items:center;gap:6px;width:46%;flex:none}.snd33 .sv input{flex:1;min-width:0;accent-color:#e2b04a}.snd33 .sv b{width:28px;text-align:center;font-size:12px;color:#ffd98a}
+.ctl33 .setrow{display:flex;align-items:center;justify-content:space-between;gap:10px}.ctl33 .sv{display:flex;align-items:center;gap:6px;width:46%;flex:none}.ctl33 .sv input{flex:1;min-width:0;accent-color:#e2b04a}.ctl33 .sv b{width:36px;text-align:center;font-size:12px;color:#ffd98a}
+.ctl33 .btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+#je33{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);direction:rtl;font-family:var(--f-body);touch-action:none}
+#je33 .pn{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);width:min(440px,92vw);padding:12px 14px;border-radius:16px;border:1.5px solid #e2b04a;background:rgba(24,14,6,.95);color:#fff1d2;text-align:center}
+#je33 .pn b{color:#ffd98a}#je33 .pn p{margin:4px 0 8px;font-size:13px;opacity:.85}
+#je33 .pn .r{display:flex;align-items:center;gap:8px;margin:6px 0}#je33 .pn .r input{flex:1;accent-color:#e2b04a}
+#je33 .pn .bt{display:flex;gap:8px;justify-content:center;margin-top:6px}
+#je33 .pn button{padding:8px 16px;border-radius:12px;border:1px solid rgba(255,214,140,.45);background:rgba(255,255,255,.07);color:#ffe3a6;font:700 14px var(--f-body)}
+#je33 .pn button.ok{background:linear-gradient(180deg,#ffd98a,#d9973a);color:#2a1606;border:0}
+#joy.edit33{z-index:9500!important;opacity:1!important;outline:3px dashed #ffd98a;outline-offset:6px;cursor:grab;touch-action:none}
+`;document.head.appendChild(s)})();
+
+/* ================= حجم الأزرار + مكان وحجم عصا الحركة ================= */
+const hudDef=()=>Math.max(.6,Math.min(1,innerHeight/560));
+const hudK=()=>S.settings.hud||hudDef();
+const joyS=()=>{const j=S.settings.joy||{};return j.s||hudK()};
+const joyW=()=>Math.round(128*joyS());
+function joyCenter(){const j=S.settings.joy||{};if(j.cx==null)return null;const W=joyW();
+  return[Math.max(W/2,Math.min(innerWidth-W/2,j.cx*innerWidth)),Math.max(W/2,Math.min(innerHeight-W/2,j.cy*innerHeight))]}
+function hudApply(){let s=$('#hs33');if(!s){s=document.createElement('style');s.id='hs33';document.head.appendChild(s)}
+  const k=hudK(),W=joyW(),kn=Math.round(54*joyS()),c=joyCenter();
+  s.textContent='#topR,#miniWrap,#voice,#acts,#emo,#oppP,#meP,#mLeft,#status,#quick{zoom:'+k.toFixed(3)+'}'+
+    '#joy{width:'+W+'px;height:'+W+'px'+(c?';left:'+(c[0]-W/2)+'px;top:'+(c[1]-W/2)+'px;bottom:auto':'')+'}'+
+    '#knob{width:'+kn+'px;height:'+kn+'px;margin:'+(-kn/2)+'px 0 0 '+(-kn/2)+'px}'}
+hudApply();addEventListener('resize',hudApply);
+/* اللمس: العصا تبدأ من مكانها اللي اخترته، وبحجمها */
+const touch33=$('#touch');
+touch33.addEventListener('pointerdown',e=>{if(mode!=='explore'||JE.on)return;const c=joyCenter();if(!c)return;
+  const W=joyW(),d=Math.hypot(e.clientX-c[0],e.clientY-c[1]);
+  if(d<W*.65&&joy.id===null){joy.id=e.pointerId;joy.bx=c[0];joy.by=c[1];joyEl.classList.remove('idle');try{touch33.setPointerCapture(e.pointerId)}catch(_){}e.stopImmediatePropagation();return}
+  /* لما العصا بمكان ثاني: اليسار يصير للكاميرا عادي */
+  if(e.clientX<innerWidth*.45&&e.clientY>innerHeight*.35&&camPtr===null){camPtr=e.pointerId;camLast=[e.clientX,e.clientY];try{touch33.setPointerCapture(e.pointerId)}catch(_){}e.stopImmediatePropagation()}},true);
+touch33.addEventListener('pointerdown',e=>{if(e.pointerId===joy.id&&!joyCenter()){const W=joyW();joyEl.style.left=(e.clientX-W/2)+'px';joyEl.style.top=(e.clientY-W/2)+'px'}});
+touch33.addEventListener('pointermove',e=>{if(e.pointerId!==joy.id)return;const R=52*joyS();let dx=e.clientX-joy.bx,dy=e.clientY-joy.by;const d=Math.hypot(dx,dy);if(d>R){dx*=R/d;dy*=R/d}
+  knob.style.transform='translate('+dx+'px,'+dy+'px)';joy.x=dx/R;joy.y=-dy/R});
+
+/* ---------- وضع تعديل مكان العصا ---------- */
+const JE={on:false};
+function joyEdit(){if(LOBBY.on||!(mode==='explore'||mode==='sheet')){toast('ادخل العالم أول، وبعدها عدّل مكان العصا');return}if(mode==='sheet'){closeLayer();setTimeout(joyEdit,120);return}JE.on=true;JE.prev=JSON.stringify(S.settings.joy||{});
+  if(!S.settings.joy||S.settings.joy.cx==null){const r=joyEl.getBoundingClientRect();S.settings.joy=Object.assign({},S.settings.joy,{cx:(r.left+r.width/2)/innerWidth,cy:(r.top+r.height/2)/innerHeight})}
+  hudApply();joyEl.hidden=false;joyEl.classList.add('edit33');joyEl.classList.remove('idle');
+  const o=document.createElement('div');o.id='je33';o.innerHTML='<div class="pn"><b>🕹️ عدّل عصا الحركة</b><p>اسحب العصا بإصبعك لأي مكان تبيه</p><div class="r"><span>صغيرة</span><input type="range" id="je33s" min="0.5" max="1.6" step="0.05" value="'+joyS()+'"><span>كبيرة</span></div><div class="bt"><button class="ok" id="je33ok">تم ✓</button><button id="je33def">الافتراضي</button><button id="je33x">إلغاء</button></div></div>';
+  document.body.appendChild(o);
+  $('#je33s').oninput=e=>{S.settings.joy.s=+e.target.value;hudApply()};
+  $('#je33ok').onclick=()=>joyEditEnd(true);$('#je33x').onclick=()=>{S.settings.joy=JSON.parse(JE.prev);joyEditEnd(false)};
+  $('#je33def').onclick=()=>{S.settings.joy={};joyEditEnd(true);toast('رجعت العصا لمكانها وحجمها الأصلي')};
+  let drag=null;joyEl.onpointerdown=e=>{if(!JE.on)return;e.stopPropagation();drag=e.pointerId;try{joyEl.setPointerCapture(e.pointerId)}catch(_){}};
+  joyEl.onpointermove=e=>{if(!JE.on||e.pointerId!==drag)return;S.settings.joy.cx=e.clientX/innerWidth;S.settings.joy.cy=e.clientY/innerHeight;hudApply()};
+  joyEl.onpointerup=joyEl.onpointercancel=e=>{if(e.pointerId===drag)drag=null}}
+function joyEditEnd(save){JE.on=false;const o=$('#je33');if(o)o.remove();joyEl.classList.remove('edit33');joyEl.classList.add('idle');joyEl.onpointerdown=joyEl.onpointermove=joyEl.onpointerup=joyEl.onpointercancel=null;
+  if(!S.settings.joy||S.settings.joy.cx==null&&S.settings.joy.s==null)delete S.settings.joy;persist();hudApply();if(save)toast('✅ انحفظ مكان العصا')}
+function ctlHtml(){const k=hudK(),js=joyS();return'<div class="ctl33">'+
+  '<div class="setrow"><label>حجم الأزرار<small>أزرار العالم والمباراة</small></label><div class="sv"><input type="range" id="c33h" min="0.55" max="1.2" step="0.05" value="'+k.toFixed(2)+'"><b>'+Math.round(k*100)+'%</b></div></div>'+
+  '<div class="setrow"><label>حجم عصا الحركة</label><div class="sv"><input type="range" id="c33j" min="0.5" max="1.6" step="0.05" value="'+js.toFixed(2)+'"><b>'+Math.round(js*100)+'%</b></div></div>'+
+  '<div class="setrow"><label>مكان عصا الحركة<small>'+(joyCenter()?'بمكان اخترته أنت':'تطلع تحت إصبعك على يسار الشاشة')+'</small></label><div class="btns"><button class="pbtn" id="c33e">🕹️ عدّل مكانها</button><button class="gbtn" id="c33r">الافتراضي</button></div></div></div>'}
+function ctlBind(root){const h=root.querySelector('#c33h'),j=root.querySelector('#c33j');
+  if(h)h.oninput=()=>{S.settings.hud=+h.value;h.nextElementSibling.textContent=Math.round(h.value*100)+'%';hudApply();persist()};
+  if(j)j.oninput=()=>{S.settings.joy=Object.assign({},S.settings.joy,{s:+j.value});j.nextElementSibling.textContent=Math.round(j.value*100)+'%';hudApply();persist()};
+  const e=root.querySelector('#c33e');if(e)e.onclick=ev=>{ev.preventDefault();ev.stopPropagation();joyEdit()};
+  const r=root.querySelector('#c33r');if(r)r.onclick=ev=>{ev.preventDefault();ev.stopPropagation();delete S.settings.joy;delete S.settings.hud;persist();hudApply();renderSheet();toast('رجعت الأزرار والعصا للأصلي')}}
+
+/* ---------- نحطهم بصفحة الإعدادات ---------- */
+const _rs33=renderSheet;renderSheet=function(){const r=_rs33.apply(this,arguments);try{const B=$('#shB');if(B&&sheetKind==='set'){
+  if(sheetTab==='voice'){['#amb','#mus'].forEach(id=>{const i=B.querySelector(id);if(i){const row=i.closest('.setrow');if(row)row.remove()}});
+    const d=document.createElement('div');d.innerHTML='<div class="sec">الأصوات</div>'+sndHtml();B.insertBefore(d,B.firstChild);sndBind(d)}
+  if(sheetTab==='gfx'){const d=document.createElement('div');d.innerHTML='<div class="sec">التحكم والأزرار</div>'+ctlHtml();B.insertBefore(d,B.firstChild);ctlBind(d)}}}catch(e){}return r};
+/* نافذة الصوت باللوبي: كل الأصوات */
+lbSound=function(){showLayer('<div class="scrim" data-x="1"><div class="card dlg v7snd" style="max-height:92vh;overflow:auto"><h3>الصوت</h3>'+sndHtml()+'<div class="row" style="margin-top:6px"><button class="pbtn" data-a="x">تم</button></div></div></div>',
+  {x:()=>closeLayer()},()=>{if(LOBBY.on&&mode==='lobby')lbBuildUI()});sndBind($('#layer'))};
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}
