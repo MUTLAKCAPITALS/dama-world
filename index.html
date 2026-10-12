@@ -4500,6 +4500,8 @@ function onlInit(){if(ONL.ready)return ONL.ready;
     if(!window.firebase||!firebase.firestore){for(const f of['firebase-app-compat.js','firebase-auth-compat.js','firebase-firestore-compat.js'])await onlLoadScript(ONL_SDK+f)}
     if(!firebase.apps.length)firebase.initializeApp(FB_CFG);
     ONL.auth=firebase.auth();ONL.db=firebase.firestore();
+    /* ننتظر Firebase يرجّع الحساب المحفوظ قبل لا نسوي ضيف جديد */
+    if(ONL.auth.onAuthStateChanged)await new Promise(r=>{const un=ONL.auth.onAuthStateChanged(()=>{try{un()}catch(e){}r()})});
     if(!ONL.auth.currentUser)await ONL.auth.signInAnonymously();
     ONL.user=ONL.auth.currentUser;
     try{await ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name||'لاعب',lvl:(S.lvl||S.level||1),seen:Date.now()},{merge:true})}catch(e){}
@@ -4819,6 +4821,53 @@ setTimeout(accBoot,800);
   setInterval(()=>{if(!document.hidden&&last&&sz()!==last)fire()},1000);
   last=sz();
 })();
+/* ================= v31: أوامر لوحة المالك داخل اللعبة — حظر، كتم، هدايا كوينز، إعلانات، صيانة، نبض الأونلاين ================= */
+const OWNER_EMAIL='alomarmutlak@gmail.com';
+const CTL={ban:false,mute:false,maint:false,unsub:[],hb:0};
+(function(){const css=`
+#blk31{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% 40%,#2a1a0e,#07050a 75%);direction:rtl;font-family:var(--f-body);color:#fff1d2;text-align:center}
+#blk31 .bx{min-width:min(300px,86vw);max-width:380px;padding:26px 22px;border-radius:20px;border:1.5px solid #c9933f;background:rgba(20,12,6,.85);box-shadow:0 0 40px rgba(255,180,80,.18)}
+#blk31 .b31i{display:block;position:static;font-size:46px;line-height:1.2;margin:0 0 6px}#blk31 .b31t{display:block;margin:4px 0 10px;font:700 24px var(--f-display);color:#ffd98a}#blk31 p{margin:0;opacity:.88;line-height:1.7;white-space:pre-wrap}
+#ann31{position:fixed;z-index:70;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);max-width:min(560px,92vw);display:flex;align-items:center;gap:10px;padding:9px 12px 9px 14px;border-radius:14px;border:1.5px solid #e2b04a;background:rgba(30,18,8,.92);color:#ffe9bd;font:600 14px/1.5 var(--f-body);direction:rtl;box-shadow:0 6px 24px rgba(0,0,0,.45),0 0 14px rgba(255,190,90,.3);animation:ann31 .45s ease-out}
+#ann31 b{color:#ffd98a;white-space:nowrap}#ann31 span{flex:1;white-space:pre-wrap}#ann31 button{flex:none;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,214,140,.45);background:rgba(255,255,255,.06);color:#ffe3a6;font-size:14px}
+@keyframes ann31{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}
+`;const s=document.createElement('style');s.textContent=css;document.head.appendChild(s)})();
+const isOwner=()=>{try{const u=ONL.auth&&ONL.auth.currentUser;return!!(u&&u.email===OWNER_EMAIL)}catch(e){return false}};
+function ctlBlock(icon,title,msg){let b=$('#blk31');if(!b){b=document.createElement('div');b.id='blk31';document.body.appendChild(b)}
+  b.innerHTML='<div class="bx"><div class="b31i">'+icon+'</div><div class="b31t">'+esc(title)+'</div><p>'+esc(msg||'')+'</p></div>'}
+function ctlUnblock(){const b=$('#blk31');if(b)b.remove()}
+function ctlRefreshBlock(){if(CTL.ban)ctlBlock('⛔','حسابك محظور',CTL.banWhy||'تم إيقاف حسابك من إدارة اللعبة.');
+  else if(CTL.maint&&!isOwner())ctlBlock('🛠️','اللعبة تحت الصيانة',CTL.maintMsg||'نرجع لكم قريب إن شاء الله، شكراً لصبركم.');else ctlUnblock()}
+/* إعلان من الإدارة: يطلع مرة وحدة لكل إعلان */
+function ctlAnn(a){const old=$('#ann31');if(!a||!a.id||!a.text){if(old)old.remove();return}if(S.annSeen===a.id){if(old)old.remove();return}
+  if(old&&old.dataset.id==a.id)return;if(old)old.remove();const d=document.createElement('div');d.id='ann31';d.dataset.id=a.id;
+  d.innerHTML='<b>📢 الإدارة</b><span>'+esc(a.text)+'</span><button aria-label="إغلاق">✕</button>';
+  d.querySelector('button').onclick=()=>{S.annSeen=a.id;persist();d.remove()};document.body.appendChild(d);try{lbSound&&lbSound('pop')}catch(e){}}
+/* هدايا الكوينز: كل هدية لها رقم، ما تنحسب مرتين */
+function ctlGifts(list){if(!Array.isArray(list)||!list.length)return;S.giftIds=S.giftIds||[];let tot=0;
+  for(const g of list){if(!g||!g.id||S.giftIds.includes(g.id))continue;const c=Math.round(+g.c||0);S.coins=Math.max(0,(S.coins||0)+c);tot+=c;S.giftIds.push(g.id)}
+  if(S.giftIds.length>60)S.giftIds=S.giftIds.slice(-60);if(!tot)return;persist();try{updateProfile()}catch(e){}
+  const e=$('#lbCoins span');if(e)e.textContent=S.coins.toLocaleString('en');
+  toast(tot>0?'🎁 وصلتك '+tot.toLocaleString('en')+' كوينز من الإدارة':'⚠️ الإدارة عدّلت كوينزك ('+tot.toLocaleString('en')+')',4200)}
+/* الكتم: يقفل المايك بالمباراة */
+function ctlApplyMute(){try{if(CTL.mute&&typeof VC!=='undefined'&&VC.local)VC.local.getAudioTracks().forEach(t=>t.enabled=false)}catch(e){}}
+(function(){const b=$('#mMic');if(!b)return;const prev=b.onclick;b.onclick=function(){if(CTL.mute&&game&&game.online){toast('🔇 المايك مقفول عليك من الإدارة');return}return prev&&prev.apply(this,arguments)}})();
+if(typeof vcStart==='function'){const _vc31=vcStart;vcStart=async function(){const r=await _vc31.apply(this,arguments);ctlApplyMute();return r}}
+/* نبض: آخر ظهور (عشان عدّاد الأونلاين باللوحة) */
+function ctlBeat(){try{if(!document.hidden&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({seen:Date.now(),name:S.name||'لاعب',lvl:(typeof level==='function'?level():1)},{merge:true}).catch(()=>{})}catch(e){}}
+async function ctlBoot(){try{await onlInit()}catch(e){return}const db=ONL.db,uid=ONL.user.uid;
+  CTL.unsub.forEach(f=>{try{f()}catch(e){}});CTL.unsub=[];
+  /* أول مرة نشوف هاللاعب: نسجّل تاريخ دخوله */
+  try{const d=await db.collection('users').doc(uid).get();if(!d.exists||!(d.data()||{}).created)await db.collection('users').doc(uid).set({created:Date.now()},{merge:true})}catch(e){}
+  setTimeout(ctlBeat,2500);
+  try{CTL.unsub.push(db.collection('ctl').doc(uid).onSnapshot(sn=>{const d=(sn&&sn.exists&&sn.data())||{};CTL.ban=!!d.ban;CTL.banWhy=d.banWhy||'';CTL.mute=!!d.mute;ctlApplyMute();ctlGifts(d.gifts);ctlRefreshBlock()},()=>{}))}catch(e){}
+  try{CTL.unsub.push(db.collection('cfg').doc('global').onSnapshot(sn=>{const d=(sn&&sn.exists&&sn.data())||{};CTL.maint=!!d.maint;CTL.maintMsg=d.maintMsg||'';ctlRefreshBlock();ctlAnn(d.ann)},()=>{}))}catch(e){}
+  clearInterval(CTL.hb);CTL.hb=setInterval(ctlBeat,120000)}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)ctlBeat()});
+setTimeout(ctlBoot,1500);
+/* زر لوحة المالك بقائمة "حسابي" — يطلع لك بس */
+const _accMenu31=accMenu;accMenu=function(){const r=_accMenu31.apply(this,arguments);
+  if(isOwner()){const row=document.querySelector('.acc .dlg .row');if(row&&!document.getElementById('own31')){const b=document.createElement('button');b.id='own31';b.className='pbtn';b.textContent='👑 لوحة المالك';b.style.marginTop='6px';b.onclick=()=>{window.open('admin.html','_blank')};row.parentNode.insertBefore(b,row.nextSibling)}}return r};
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}
