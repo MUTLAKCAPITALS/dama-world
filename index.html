@@ -4531,7 +4531,7 @@ async function onlGoogle(){try{const p=new firebase.auth.GoogleAuthProvider();
 /* ---------- سوّ غرفة ---------- */
 async function onlHost(){let code,ref;
   try{for(let i=0;i<5;i++){code=onlCode();ref=ONL.db.collection('rooms').doc(code);const d=await ref.get();if(!d.exists)break}
-    await ref.set({code,host:ONL.user.uid,hostName:S.name||'لاعب',guest:null,guestName:'',state:'wait',moves:[],resigned:null,created:Date.now()})}
+    await ref.set({code,host:ONL.user.uid,hostName:S.name||'لاعب',hostPhoto:S.avatarImg||null,guest:null,guestName:'',state:'wait',moves:[],resigned:null,created:Date.now()})}
   catch(e){toast(onlErr(e));return}
   ONL.code=code;ONL.role='host';ONL.seq=0;ONL.started=false;onlListen(ref);
   const msg='تعال نلعب دامة بـ عالم الدامة! كود الغرفة: '+code+'\n'+location.href.split('#')[0]+'#join='+code;
@@ -4546,7 +4546,7 @@ async function onlJoin(code){const E=$('#onlE');if(code.length!==4){E&&(E.textCo
     if(!d.exists){E&&(E.textContent='ما لقينا غرفة بهالكود');return}const r=d.data();
     if(r.host===ONL.user.uid){E&&(E.textContent='هذي غرفتك أنت');return}
     if(r.guest&&r.guest!==ONL.user.uid){E&&(E.textContent='الغرفة ممتلئة');return}
-    await ref.update({guest:ONL.user.uid,guestName:S.name||'لاعب',state:'play'});
+    await ref.update({guest:ONL.user.uid,guestName:S.name||'لاعب',guestPhoto:S.avatarImg||null,state:'play'});
     ONL.code=code;ONL.role='guest';ONL.seq=0;ONL.started=false;closeLayer();onlListen(ref)}
   catch(e){E&&(E.textContent=onlErr(e))}}
 function onlListen(ref){if(ONL.unsub)ONL.unsub();ONL.ref=ref;
@@ -4651,6 +4651,42 @@ const _onlStart27=onlStart;onlStart=async function(){const r=await _onlStart27.a
 const _onlPump27=onlPump;onlPump=function(){vcSignal();return _onlPump27.apply(this,arguments)};
 const _onlListen27=onlListen;onlListen=function(ref){_onlListen27.apply(this,arguments);ref.onSnapshot(()=>{setTimeout(vcSignal,50)},()=>{})};
 const _onlClose27=onlClose;onlClose=function(){vcStop();return _onlClose27.apply(this,arguments)};
+
+/* ================= v28: صورة الملف الشخصي — اللاعب يختار صورته من جواله ================= */
+(function(){const css=`
+#lobby.lb4 .l4-prof .av{background:#1a1730 var(--myav,url(ui/avatar.webp)) center/cover!important}
+.pf.v12 .p3-av.me{background:#1a1730 var(--myav,url(ui/avatar.webp)) center/cover!important;cursor:pointer}
+.pf.v12 .p3-av.me::after{content:"📷";position:absolute;right:-4px;bottom:-4px;width:20px;height:20px;border-radius:50%;background:#2a1b0c;border:1.5px solid #e2b04a;font-size:11px;display:grid;place-items:center;line-height:1}
+.hasav{background-size:cover!important;background-position:center!important;color:transparent!important}
+.avp .prev{width:110px;height:110px;border-radius:50%;margin:6px auto 10px;background:#1a1730 center/cover;box-shadow:0 0 0 3px #e2b04a,0 0 16px rgba(255,190,90,.45)}
+.avp .row{flex-wrap:wrap;justify-content:center}
+`;const s=document.createElement('style');s.textContent=css;document.head.appendChild(s)})();
+const AVI={input:null};
+function avApply(){const u=S.avatarImg;document.documentElement.style.setProperty('--myav',u?'url('+u+')':'url(ui/avatar.webp)');
+  for(const id of['avI','meAv']){const el=$('#'+id);if(!el)continue;if(u){el.style.backgroundImage='url('+u+')';el.classList.add('hasav')}else{el.style.backgroundImage='';el.classList.remove('hasav')}}}
+/* قص مربع من النص + تصغير 256 */
+function avProcess(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{const s=Math.min(im.naturalWidth,im.naturalHeight),c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d');
+    g.drawImage(im,(im.naturalWidth-s)/2,(im.naturalHeight-s)/2,s,s,0,0,256,256);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',.82))};
+  im.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('img'))};im.src=url})}
+function avPick(){if(!AVI.input){const i=AVI.input=document.createElement('input');i.type='file';i.accept='image/*';i.style.display='none';document.body.appendChild(i);
+    i.onchange=async()=>{const f=i.files&&i.files[0];i.value='';if(!f)return;try{const d=await avProcess(f);avConfirm(d)}catch(e){toast('ما قدرنا نقرأ الصورة')}}}
+  AVI.input.click()}
+function avConfirm(d){showLayer('<div class="scrim avp" data-x="1"><div class="card dlg"><span class="tag">صورتك الشخصية</span><h3>تعجبك؟</h3><div class="prev" style="background-image:url('+d+')"></div><div class="row"><button class="pbtn" data-a="ok">'+ic('check')+'اعتمدها</button><button class="gbtn" data-a="again">صورة ثانية</button></div></div></div>',
+  {ok:()=>{S.avatarImg=d;persist();avApply();avSync();closeLayer();toast('تم تغيير صورتك ✅')},again:()=>{closeLayer();avPick()}})}
+function avMenu(){const has=!!S.avatarImg;showLayer('<div class="scrim avp" data-x="1"><div class="card dlg"><span class="tag">ملفك الشخصي</span><h3>صورتك</h3><div class="prev" style="background-image:'+(has?'url('+S.avatarImg+')':'url(ui/avatar.webp)')+'"></div><div class="row"><button class="pbtn" data-a="pick">📷 اختر من الصور</button>'+(has?'<button class="gbtn" data-a="def">الصورة الافتراضية</button>':'')+'<button class="gbtn" data-a="x">رجوع</button></div></div></div>',
+  {pick:()=>{closeLayer();avPick()},def:()=>{S.avatarImg=null;persist();avApply();avSync();closeLayer();toast('رجعت للصورة الافتراضية')},x:()=>closeLayer()})}
+/* نرسل الصورة للسيرفر عشان خصمك يشوفها بالأونلاين */
+function avSync(){try{if(ONL&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({photo:S.avatarImg||null},{merge:true}).catch(()=>{})}catch(e){}}
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('.p3-av.me');if(t){e.preventDefault();e.stopPropagation();avMenu()}},true);
+/* إعادة تطبيق الصورة بعد ما تتحدث الواجهات */
+const _updateProfile28=updateProfile;updateProfile=function(){const r=_updateProfile28.apply(this,arguments);avApply();return r};
+const _showMatchHud28=showMatchHud;showMatchHud=function(){const r=_showMatchHud28.apply(this,arguments);avApply();
+  const o=$('#oppAv'),ph=game&&game.online&&ONL.room?(ONL.role==='host'?ONL.room.guestPhoto:ONL.room.hostPhoto):null;
+  if(o){if(ph){o.style.backgroundImage='url('+ph+')';o.classList.add('hasav')}else{o.style.backgroundImage='';o.classList.remove('hasav')}}return r};
+/* الصورة تنحفظ بغرفة الأونلاين */
+const _onlInit28=onlInit;onlInit=function(){return _onlInit28.apply(this,arguments).then(u=>{avSync();return u})};
+avApply();
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}
