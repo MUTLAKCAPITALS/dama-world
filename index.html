@@ -1,3 +1,12 @@
+<!doctype html>
+<html lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#07050a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>DAMA WORLD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
@@ -4797,6 +4806,19 @@ document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#hu
 /* زر الحساب بالأونلاين بدال زر Google القديم */
 const _onlGoogle29=onlGoogle;onlGoogle=function(){return accLoginDlg()};
 setTimeout(accBoot,800);
+/* v30: إصلاح قلب الشاشة — المتصفح يعطي المقاس القديم أول لحظة الدوران، فنعيد الحساب بعد ما يستقر */
+(function(){let last='',busy=false,tm=[];
+  const sz=()=>innerWidth+'x'+innerHeight;
+  function fire(){busy=true;try{dispatchEvent(new Event('resize'))}catch(e){}busy=false;last=sz()}
+  function settle(){if(busy)return;tm.forEach(clearTimeout);tm=[120,350,700,1200].map(d=>setTimeout(()=>{if(sz()!==last)fire()},d))}
+  addEventListener('resize',settle);
+  addEventListener('orientationchange',()=>{last='';settle()});
+  if(window.visualViewport)visualViewport.addEventListener('resize',settle);
+  if(screen.orientation&&screen.orientation.addEventListener)screen.orientation.addEventListener('change',()=>{last='';settle()});
+  /* شبكة أمان: لو تغيّر المقاس بدون أي حدث */
+  setInterval(()=>{if(!document.hidden&&last&&sz()!==last)fire()},1000);
+  last=sz();
+})();
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}
