@@ -199,7 +199,6 @@ body{overflow-x:hidden}
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
 <script>
-const OWNER='alomarmutlak@gmail.com';
 const FB_CFG={apiKey:"AIzaSyAHsUMKUr1dDgUXFUCk1SNj0hpwuoKNw8A",authDomain:"dama-world.firebaseapp.com",projectId:"dama-world",storageBucket:"dama-world.firebasestorage.app",messagingSenderId:"751728629330",appId:"1:751728629330:web:3f0e015059b1e646a6b18b"};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
@@ -219,10 +218,16 @@ const ctlCache={};
 function gate(title,msg,btn){$('#app').hidden=true;$('#gate').hidden=false;$('#gT').textContent=title;$('#gM').textContent=msg;$('#gB').innerHTML=btn||''}
 function loginBtn(){gate('لوحة المالك','سجّل دخول بحساب Google حقك عشان تفتح اللوحة.','<button class="gbtn" id="gIn">'+G_SVG+'دخول بـ Google</button>');
   $('#gIn').onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){toast(e.code==='auth/popup-closed-by-user'?'سكّرت نافذة Google':'ما ضبط الدخول: '+(e.code||e.message))}}}
-auth.onAuthStateChanged(u=>{
+let adminEpoch=0;
+async function adminSession(u){const epoch=++adminEpoch;
   if(!u||u.isAnonymous){loginBtn();return}
-  if(u.email!==OWNER){gate('⛔ ممنوع','هذي الصفحة لمالك اللعبة بس.','<button class="gbtn" id="gOut">دخول بحساب ثاني</button>');$('#gOut').onclick=()=>auth.signOut();return}
-  $('#gate').hidden=true;$('#app').hidden=false;$('#me').textContent=u.email;start()});
+  gate('لوحة المالك','نتأكد من صلاحيات حسابك…');
+  try{await cnt('users');if(adminEpoch!==epoch||auth.currentUser!==u)return;
+    $('#gate').hidden=true;$('#app').hidden=false;$('#me').textContent=u.email;start();
+  }catch(e){if(adminEpoch!==epoch||auth.currentUser!==u)return;
+    if(e.code==='permission-denied'){gate('⛔ ممنوع','هذي الصفحة لمالك اللعبة بس.','<button class="gbtn" id="gOut">دخول بحساب ثاني</button>');$('#gOut').onclick=()=>auth.signOut()}
+    else{gate('تعذّر التحقق من الحساب',errMsg(e),'<button class="gbtn" id="gRetry">إعادة المحاولة</button>');$('#gRetry').onclick=()=>adminSession(auth.currentUser)}}}
+auth.onAuthStateChanged(adminSession);
 $('#out').onclick=()=>auth.signOut();
 
 /* ---------- التنقل ---------- */
@@ -233,17 +238,36 @@ let started=false;
 function start(){if(started)return;started=true;loadStats();repBadge();setInterval(()=>{if(!document.hidden)repBadge()},60000);setInterval(()=>{if(!document.hidden&&$('#t-stats').classList.contains('on'))loadStats()},30000);watchCfg()}
 
 /* ---------- الإحصائيات ---------- */
-async function cnt(q){try{if(q.count){const s=await q.count().get();return s.data().count}}catch(e){}const s=await q.get();return s.size}
-async function loadStats(){$('#rf').disabled=true;
+// Aggregate counts use the current owner's Firebase token and the same Firestore security rules.
+// Never fall back to downloading every private save just to count players.
+async function cnt(collection,field,op,value){
+  if(!['users','reports'].includes(collection))throw{code:'invalid-argument'};
+  const user=auth.currentUser;if(!user||user.isAnonymous)throw{code:'permission-denied'};
+  const token=await user.getIdToken();if(auth.currentUser!==user)throw{code:'session'};
+  const query={from:[{collectionId:collection}]};
+  if(field)query.where={fieldFilter:{field:{fieldPath:field},op,value:typeof value==='number'?{integerValue:String(value)}:{stringValue:String(value)}}};
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  try{const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(FB_CFG.projectId)+'/databases/(default)/documents:runAggregationQuery',{
+    method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:controller.signal,
+    body:JSON.stringify({structuredAggregationQuery:{structuredQuery:query,aggregations:[{alias:'total',count:{}}]}})});
+    const data=await response.json();if(!response.ok)throw{code:String(data.error&&data.error.status||'unavailable').toLowerCase().replaceAll('_','-')};
+    const rows=Array.isArray(data)?data:[data],result=rows.find(row=>row.result&&row.result.aggregateFields&&row.result.aggregateFields.total);
+    const n=result&&result.result.aggregateFields.total.integerValue;
+    if(typeof n!=='string'||!/^\d+$/.test(n)||!Number.isSafeInteger(Number(n)))throw{code:'invalid-count'};
+    return Number(n);
+  }finally{clearTimeout(timer)}}
+const STATS={busy:false};
+async function loadStats(){if(STATS.busy)return;STATS.busy=true;$('#rf').disabled=true;const uid=auth.currentUser&&auth.currentUser.uid;
   const day=new Date();day.setHours(0,0,0,0);
-  try{const [on,td,rg,all]=await Promise.all([cnt(U.where('seen','>',Date.now()-ONLINE_MS)),cnt(U.where('created','>=',day.getTime())),cnt(U.where('nameKey','>','')),cnt(U)]);
+  try{const [on,td,rg,all]=await Promise.all([cnt('users','seen','GREATER_THAN',Date.now()-ONLINE_MS),cnt('users','created','GREATER_THAN_OR_EQUAL',day.getTime()),cnt('users','nameKey','GREATER_THAN',''),cnt('users')]);
+    if(!auth.currentUser||auth.currentUser.uid!==uid)return;
     $('#sOn').textContent=num(on);$('#sToday').textContent=num(td);$('#sReg').textContent=num(rg);$('#sAll').textContent=num(all);
     $('#sUpd').textContent='آخر تحديث '+new Date().toLocaleTimeString('ar-KW',{hour:'numeric',minute:'2-digit'});
-    const r=await U.orderBy('seen','desc').limit(8).get();await withCtl(r.docs);renderList($('#recent'),r.docs)}
+    const r=await U.orderBy('seen','desc').limit(8).get();await withCtl(r.docs);if(auth.currentUser&&auth.currentUser.uid===uid)renderList($('#recent'),r.docs)}
   catch(e){toast(errMsg(e))}
-  $('#rf').disabled=false}
+  finally{STATS.busy=false;$('#rf').disabled=false}}
 $('#rf').onclick=loadStats;
-function errMsg(e){const c=(e&&e.code)||'';if(c==='permission-denied')return'Firebase رفض — تأكد إنك حطيت القوانين الجديدة';if(/unavailable|network/.test(c))return'ما فيه اتصال';return'خطأ: '+(c||e.message||e)}
+function errMsg(e){const c=(e&&e.code)||'';if(c==='permission-denied')return'Firebase رفض — تأكد إنك حطيت القوانين الجديدة';if(c==='resource-exhausted')return'الخدمة وصلت حد الاستخدام مؤقتًا؛ جرّب لاحقًا';if(/unavailable|network/.test(c)||e.name==='AbortError')return'تعذّر الاتصال؛ حاول مرة ثانية';return'خطأ: '+(c||e.message||e)}
 
 /* ---------- اللاعبين ---------- */
 async function withCtl(docs){await Promise.all(docs.map(async d=>{if(ctlCache[d.id]!==undefined)return;try{const c=await C.doc(d.id).get();ctlCache[d.id]=c.exists?c.data():{}}catch(e){ctlCache[d.id]={}}}))}
@@ -286,7 +310,7 @@ function drawPlayer(){const id=cur,d=PD[id]||{},c=ctlCache[id]||{},co=coinsOf(d)
   $('#sx').onclick=closeSheet;$('#cAdd').onclick=()=>gift(1);$('#cSub').onclick=()=>gift(-1);$('#mBtn').onclick=toggleMute;$('#bBtn').onclick=toggleBan}
 function closeSheet(){$('#sheet').classList.remove('on');cur=null}
 $('#sheet').onclick=e=>{if(e.target.id==='sheet')closeSheet()};
-async function setCtl(id,data){await C.doc(id).set(Object.assign({by:OWNER,at:Date.now()},data),{merge:true});ctlCache[id]=Object.assign({},ctlCache[id]||{},data)}
+async function setCtl(id,data){const user=auth.currentUser;if(!user)throw{code:'session'};await C.doc(id).set(Object.assign({by:user.uid,at:Date.now()},data),{merge:true});ctlCache[id]=Object.assign({},ctlCache[id]||{},data)}
 async function gift(sign){const id=cur,input=$('#cAmt');if(!id||input.disabled)return;const a=Math.round(+$('#cAmt').value||0);if(a<=0){toast('اكتب الكمية');return}
   const d=PD[id]||{},name=d.name||'اللاعب';if(sign<0&&!confirm('تخصم '+num(a)+' كوينز من '+name+'؟'))return;
   input.disabled=true;try{await setCtl(id,{gifts:firebase.firestore.FieldValue.arrayUnion({id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),c:sign*a,at:Date.now()})});
@@ -319,7 +343,7 @@ const WHY={voice:'كلام غير لائق بالمايك',name:'اسم أو ص�
 const R=db.collection('reports');let rFilt='open';
 const REPORT_PAGE={token:0,cursor:null,docs:[],more:false,busy:false};
 (function(){const first=document.querySelector('[data-r]');if(first){const b=document.createElement('button');b.className='chip';b.dataset.r='legacy';b.textContent='بلاغات قديمة بلا تاريخ';first.parentNode.appendChild(b)}})();
-async function repBadge(){try{const n=await cnt(R.where('status','==','open'));const b=$('#rBdg');b.hidden=!n;b.textContent=n>99?'99+':n}catch(e){}}
+async function repBadge(){try{const uid=auth.currentUser&&auth.currentUser.uid,n=await cnt('reports','status','EQUAL','open');if(!auth.currentUser||auth.currentUser.uid!==uid)return;const b=$('#rBdg');b.hidden=!n;b.textContent=n>99?'99+':n}catch(e){}}
 document.querySelectorAll('[data-r]').forEach(c=>c.onclick=()=>{document.querySelectorAll('[data-r]').forEach(x=>x.classList.toggle('on',x===c));rFilt=c.dataset.r;loadReports()});
 async function loadReports(more){if(more&&REPORT_PAGE.busy)return;const el=$('#rlist'),filter=rFilt,token=++REPORT_PAGE.token;if(!more){REPORT_PAGE.cursor=null;REPORT_PAGE.docs=[];el.innerHTML='<div class="empty">نحمّل…</div>'}REPORT_PAGE.busy=true;
   try{let query=filter==='legacy'?R.orderBy(firebase.firestore.FieldPath.documentId()):R.orderBy('at','desc');if(REPORT_PAGE.cursor)query=query.startAfter(REPORT_PAGE.cursor);

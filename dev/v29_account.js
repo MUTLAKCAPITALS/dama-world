@@ -98,6 +98,8 @@ function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ON
   const sv=Object.assign({},S);delete sv.savedAt;let js=JSON.stringify(sv);if(accBytes(js)+accBytes(S.avatarImg||'')>850000){delete sv.replays;js=JSON.stringify(sv)}
   if(accBytes(js)+accBytes(S.avatarImg||'')>900000){ACC.saveError='save-too-large';accBackup(uid);toast('الحفظ كبير؛ قلّل حجم صورة حسابك وأعد المحاولة. تقدمك باقي بالجهاز',6000);return Promise.resolve(false)}
   if(js===ACC.ackedSave&&!ACC.saveError)return Promise.resolve(true);
+  // A verified server read already confirms identical content; do not rewrite it on every reload.
+  if(js===ACC.baseSave&&!ACC.saveError&&!ACC.lastAttempt){ACC.ackedSave=js;ACC.ackedFp=accFp();return Promise.resolve(true)}
   const token=uid+'-'+t+'-'+Math.random().toString(36).slice(2),expectedRev=ACC.baseRev,expectedSave=ACC.baseSave,fp=accFp(),prior=ACC.lastAttempt;ACC.lastAttempt={id:token,js,at:sv.editAt,fp};
   ACC.uploading=(async()=>{try{
     const ref=ONL.db.collection('users').doc(uid);
