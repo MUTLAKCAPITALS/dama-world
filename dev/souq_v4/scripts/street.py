@@ -86,6 +86,7 @@ def sign(c, M, text, cx, z, w, h, y=-0.01, paint='signboard'):
     return b, t
 
 def transform_collection(c, m):
+    bpy.context.view_layer.update()            # matrix_world of freshly created objects is stale until this
     for o in c.all_objects:
         if o.parent is None: o.matrix_world = m @ o.matrix_world
 
@@ -529,20 +530,35 @@ def pergola(c, M):
     # hanging wayfinding board (the old souqs are signposted by name), readable from both directions
     for rot, off in ((90, .02), (-90, -.02)):
         b_, t_ = sign(c, M, 'سوق التمر', 0, 0, 1.3, .32, y=0)
+        bpy.context.view_layer.update()
         m = T(6.75 + off, -3.5, 3.95) @ RZ(rot)
         for o in (b_, t_): o.matrix_world = m @ o.matrix_world
     ch = bmesh.new()
     for yy in (-4.05, -2.95):
         lib.bm_cyl(ch, (6.75, yy, 4.3), (6.75, yy, 4.62), .006, 6)
     cho = lib.from_bm('Pergola_SignChains', ch, c, M['iron']); lib.uv_box(cho)
-    # hanging lanterns on the alley centreline, one per bay
-    k = 0
-    for xb in (-4.5, 0.0, 4.5, 9.0, 13.5):
-        hero.lantern(c, M, 'PergolaLantern%d' % k, 0, 0)
-        for o in [o for o in c.objects if o.name.startswith('PergolaLantern%d' % k)]:
-            # keep only the hanging lantern (drop its wall bracket parts by moving the bracket into the beam)
-            o.matrix_world = T(xb, -3.1 + .42, 4.45) @ o.matrix_world
-        k += 1
+    # hanging lanterns on the alley centreline, one per bay (chain from the cross beam, no wall bracket)
+    for k, xb in enumerate((-4.5, 0.0, 4.5, 9.0, 13.5)):
+        hanging_lantern(c, M, 'PergolaLantern%d' % k, xb, -3.1, 4.62)
+
+def hanging_lantern(c, M, name, x, y, ztop, drop=.75):
+    iron = bmesh.new(); glass = bmesh.new(); bulb = bmesh.new()
+    n = int(drop / .035)
+    for k in range(n):
+        lib.bm_torus(iron, (x, y, ztop - .02 - .035 * k), .016, .004, (1, 0, 0) if k % 2 else (0, 1, 0), 10, 4)
+    zt = ztop - drop
+    lib.bm_lathe(iron, (x, y, zt - .02), [(.11, 0), (.12, .01), (.05, .09), (.02, .11), (.03, .13), (0, .15)], 6)
+    for i in range(6):
+        a = 2 * math.pi * i / 6
+        lib.bm_cyl(iron, (x + .095 * math.cos(a), y + .095 * math.sin(a), zt - .30), (x + .095 * math.cos(a), y + .095 * math.sin(a), zt - .01), .006, 6)
+    lib.bm_lathe(iron, (x, y, zt - .34), [(0, -.05), (.02, -.03), (.06, 0), (.10, .02), (.10, .04), (0, .04)], 6)
+    lib.bm_lathe(glass, (x, y, zt - .30), [(.088, 0), (.088, .29)], 6)
+    lib.bm_lathe(bulb, (x, y, zt - .27), [(0, 0), (.022, .01), (.028, .05), (.012, .09), (0, .1)], 10)
+    io = lib.from_bm(name + '_Iron', iron, c, M['iron'], smooth=True); lib.uv_box(io)
+    go = lib.from_bm(name + '_Glass', glass, c, M['glass']); go.visible_shadow = False
+    bo = lib.from_bm(name + '_Bulb', bulb, c, M['bulb'], smooth=True); bo.visible_shadow = False
+    L = bpy.data.lights.new(name + '_Light', 'POINT'); L.energy = 0; L.color = (1, .7, .4); L.shadow_soft_size = .03
+    lo = bpy.data.objects.new(name + '_Light', L); lo.location = (x, y, zt - .21); c.objects.link(lo)
 
 # ------------------------------------------------------------------ the designed ground
 def ground(c, M):
@@ -636,15 +652,18 @@ def ground(c, M):
     sa = lib.from_bm('Street2_Sand', sand, c, M['mud']); lib.uv_box(sa)
 
 # ------------------------------------------------------------------ planters with date palms, benches
-def palm(c, M, name, x, y, z, h=2.8, n=16):
+def palm(c, M, name, x, y, z, h=2.8, n=22):
     tr = bmesh.new(); fr = bmesh.new()
     uvl = fr.loops.layers.uv.new('UVMap')
     lean = R.uniform(-4, 4)
-    segs = 14
+    segs = 24
     for s_ in range(segs):                       # trunk: stacked leaf-base rings
         z0 = z + h * s_ / segs; z1 = z + h * (s_ + 1) / segs
         r = .16 - .03 * s_ / segs
-        lib.bm_lathe(tr, (x, y, z0), [(r * .92, 0), (r * 1.08, (z1 - z0) * .55), (r * .95, z1 - z0)], 12, cap_top=False, cap_bottom=False)
+        n0 = len(tr.verts)
+        lib.bm_lathe(tr, (x, y, z0), [(r * .9, 0), (r * 1.12, (z1 - z0) * .6), (r * .93, z1 - z0)], 10, cap_top=False, cap_bottom=False)
+        tr.verts.ensure_lookup_table()
+        for v in tr.verts[n0:]: v.co = Matrix.Rotation(s_ * .5, 4, 'Z') @ (v.co - Vector((x, y, 0))) + Vector((x, y, 0))
     top = Vector((x, y, z + h))
     for k in range(n):
         az = 2 * math.pi * k / n + R.uniform(-.15, .15)
@@ -652,7 +671,7 @@ def palm(c, M, name, x, y, z, h=2.8, n=16):
         L = R.uniform(1.2, 1.55)
         dirv = Vector((math.cos(az), math.sin(az), 0))
         prev = None
-        steps = 10
+        steps = 16
         for sidx in range(steps + 1):
             t = sidx / steps
             ang = tilt + math.radians(55) * t * t                # droops towards the tip
@@ -660,7 +679,7 @@ def palm(c, M, name, x, y, z, h=2.8, n=16):
             # leaflets: V-shaped pair at each step
             if 0 < sidx < steps:
                 side = dirv.cross(Vector((0, 0, 1))).normalized()
-                ll = .32 * math.sin(math.pi * t) + .05
+                ll = .42 * math.sin(math.pi * min(1, t * 1.15)) + .06
                 for sgn in (-1, 1):
                     q0 = p; q1 = p + side * sgn * ll * .25 + Vector((0, 0, .02)) + dirv * .06
                     q2 = p + side * sgn * ll + Vector((0, 0, -.06)) + dirv * .12
@@ -698,6 +717,40 @@ def furniture(c, M):
     be = lib.from_bm('Benches', bench, c, M['beam']); lib.uv_box(be); lib.bevel(be, .006, 2)
     bo = lib.from_bm('Benches_Iron', bi, c, M['iron']); lib.uv_box(bo); lib.bevel(bo, .004, 2)
 
+# ------------------------------------------------------------------ alley ends: covered passages (سباط) so the street reads as part of a larger souq
+def end_block(c, M, tag, mat='plaster_w', wing=None):
+    """Built facing -y in local space (local x 0..21 across, depth 6). A covered passage (سباط) 3.2 m wide
+    runs through it in line with the alley; the rest is plain plaster with pole ends, two windows, a spout."""
+    W, D, H, P = 21.0, 6.0, 6.2, 6.9
+    px0, px1 = 8.9, 12.1                       # passage, centred on the alley centreline
+    sh = bmesh.new()
+    solids = [(0, W, 0, D, 0, H), (0, W, 0, .4, H, P), (0, W, D - .4, D, H, P), (0, .4, .4, D - .4, H, P), (W - .4, W, .4, D - .4, H, P)]
+    if wing: solids.append(wing)
+    holes = [(px0, px1, -1, D + 1, -1, 3.4), (px0 - .3, px1 + .3, -1, .6, 3.4, 3.65),
+             (4.0, 4.9, -1, .6, 4.3, 5.4), (16.1, 17.0, -1, .6, 4.3, 5.4)]
+    lib.shell(sh, solids, holes)
+    so = lib.from_bm(tag + '_Shell', sh, c, [M[mat]]); lib.uv_box(so, arch=True); lib.plaster_mods(so, .035, 2, .01)
+    bm = bmesh.new()
+    lintel(bm, px0 - .3, px1 + .3, 3.4, 3.65, .6)
+    for cx in (4.45, 16.55): lintel(bm, cx - .7, cx + .7, 5.4, 5.58, .6)
+    lo = lib.from_bm(tag + '_Lintels', bm, c, M['beam']); lib.uv_box(lo); lib.bevel(lo, .012, 3, 30)
+    poles = bmesh.new(); ends = []
+    pole_row(poles, .5, W - .5, H - .3, 0, D, .42, ends)
+    pole_row(poles, px0 + .15, px1 - .15, 3.4 - .07, -.1, D + .1, .38)            # passage ceiling
+    po = lib.from_bm(tag + '_Poles', poles, c, M['pole'], smooth=True); lib.uv_box(po); lib.bevel(po, .01, 2, 50)
+    mt = bmesh.new(); lib.bm_box(mt, px0, px1, 0, D, 3.4, 3.42)
+    mo = lib.from_bm(tag + '_PassageMat', mt, c, M['reed']); lib.uv_box(mo)
+    for cx in (4.45, 16.55): window(c, M, cx, 4.3, 5.4, .9, 'shutter2', (0, 0), tag + '_W%d' % int(cx))
+    wd = bmesh.new(); ir = bmesh.new(); spout(wd, ir, 14.0, H + .02)
+    w = lib.from_bm(tag + '_Spout', wd, c, M['beam']); lib.uv_box(w); lib.bevel(w, .005, 2)
+    i_ = lib.from_bm(tag + '_SpoutStrap', ir, c, M['iron']); lib.uv_box(i_)
+    decal_set(c, M, 'Decal_' + tag, [(13.7, 14.3, H - 2.6, H)] + [(x - .07, x + .07, z - R.uniform(.3, .6), z - .02) for (x, z) in ends])
+    # the passage floor continues the paving; a warm lamp half way through
+    fl = bmesh.new(); lib.bm_box(fl, px0, px1, 0, D, -.06, 0)
+    lib.set_rand_attr(fl, list(fl.verts), .3)
+    fo = lib.from_bm(tag + '_PassageFloor', fl, c, M['paver']); lib.uv_box(fo)
+    hanging_lantern(c, M, tag + '_PassageLantern', (px0 + px1) / 2, D / 2, 3.38, .45)
+
 # ------------------------------------------------------------------ build all
 def build(M0):
     M = street_materials(M0)
@@ -708,10 +761,20 @@ def build(M0):
     # the hero building's own street test is replaced (kept, just hidden) by the designed ground
     hg = bpy.data.collections.get('Ground')
     if hg:
-        for o in hg.all_objects: o.hide_render = True; o.hide_set(True)
+        for o in list(hg.all_objects):
+            if o is None: continue
+            o.hide_render = True
+            try: o.hide_set(True)
+            except Exception: pass
     building_B(cb, M)
     building_C(cc, M)
     transform_collection(cc, T(C_TX, YS, 0) @ RZ(180))
+    ce = lib.coll('Street_EndEast', root); cw = lib.coll('Street_EndWest', root)
+    for c_ in (ce, cw): lib.clear_collection(c_)
+    end_block(ce, M, 'EndE', 'plaster_w', wing=(14.0, 20.5, -1.05, 0, 0, 5.2))     # fills the step past Building C
+    transform_collection(ce, T(B_X1, 7.0, 0) @ RZ(-90))          # local x 10.5 -> world y -3.5
+    end_block(cw, M, 'EndW', 'plaster_o', wing=(0.5, 7.0, -.25, 0, 0, 5.2))
+    transform_collection(cw, T(-5.75, -14.0, 0) @ RZ(90))
     pergola(cp, M)
     ground(cg, M)
     furniture(cf, M)

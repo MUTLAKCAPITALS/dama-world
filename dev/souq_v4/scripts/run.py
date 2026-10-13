@@ -30,6 +30,6 @@ def rebuild_street(samples=96):
                 mortar='M_SandMortar', mud='M_RoofMud', reed='M_ReedMat', burlap='M_Burlap', spice='M_Spice', glass='M_LanternGlass',
                 bulb='M_BulbWarm', jar='M_Jar', jar2='M_JarGreen', clay='M_Clay', frame='M_FramePaint', drip='M_DripDecal',
                 rust='M_RustDecal', basket='M_Basket', glassjar='M_GlassJar', terracotta='M_Terracotta', wicker='M_WickerDark')
-    MM = {k: bpy.data.materials[v] for k, v in keys.items()}
+    MM = {k: bpy.data.materials.get(v) for k, v in keys.items() if bpy.data.materials.get(v)}
     street.build(MM)
     scene.cameras(); scene.world('day')
