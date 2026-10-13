@@ -1,5 +1,9 @@
 # Save-sync fix — tests
 
+The sign-in entry now has its own tests. See [AUTH_ENTRY.md](AUTH_ENTRY.md) for
+`node dev/tests/test_auth_start.cjs` and `node dev/tests/test_save_sync.cjs`.
+The older browser harness below needs an isolated direct-game fixture, as described there.
+
 ## The bug
 `persist()` stamped `S.savedAt = Date.now()` on every save, and the game saves several times
 during startup **before** `accBoot()` reads the account from Firestore. So the local copy always
@@ -87,7 +91,7 @@ The script checks every expectation and **exits 1** if any value differs or the 
 In M3, `editAt` moves to "now" after local wins, because startup default changes count as an
 unsynced edit and are applied once local wins.
 
-## Results
+## Results at `08f601d`, before the new sign-in entry
 - This branch: **all cases passed** (exit 0). The whole suite takes about 10 minutes in
   software-rendered Chromium, so it was run in two parts: A–H, then M, M2 and M3.
 - Against commit `4ea6fb5`: **D, F and G fail**. In D the 150 is uploaded over the 900.
@@ -98,3 +102,4 @@ unsynced edit and are applied once local wins.
 ## Known limit
 If the same account plays on two devices at the same time, the last device to save wins. Nothing
 merges the two.
+

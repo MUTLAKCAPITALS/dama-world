@@ -1,0 +1,25 @@
+/* The entry screen renders before Firebase, WebGL and game assets. */
+body.auth-pending #start,body.auth-pending #rot,body.auth-pending #intro{display:none!important}
+.auth-gate{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;box-sizing:border-box;padding:20px;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:radial-gradient(ellipse at 15% 20%,rgba(63,72,121,.45),transparent 65%),linear-gradient(110deg,rgba(8,12,29,.95),rgba(8,12,29,.78)),url(lb/key.jpg) center/cover #0b1024;color:#fff2d7;direction:rtl;font-family:var(--f-body,'Tajawal',sans-serif);overflow:auto;touch-action:pan-y}
+.auth-gate[hidden],.auth-gate [hidden]{display:none!important}
+.auth-card{box-sizing:border-box;width:min(100%,430px);max-height:100%;overflow:auto;border:1px solid #b48b49;border-radius:24px;padding:27px 30px;background:linear-gradient(145deg,rgba(29,36,61,.96),rgba(12,17,34,.97));box-shadow:0 24px 80px #0007,inset 0 1px #ffe8bb24;text-align:center}
+.auth-brand{font:700 27px var(--f-display,'Reem Kufi',sans-serif);color:#f1cf87;margin:0 0 5px;line-height:1.4}.auth-brand small{display:block;font:600 10px sans-serif;letter-spacing:.26em;color:#b6a784;margin-top:3px;direction:ltr}
+.auth-rule{height:1px;background:linear-gradient(90deg,transparent,#b9904d88,transparent);margin:20px 0}
+.auth-gate h2{font-size:21px;margin:0 0 7px}.auth-gate p{font-size:14px;line-height:1.8;color:#bfc7db;margin:0 0 19px}
+.auth-gate button,.auth-gate input{font:inherit;box-sizing:border-box;touch-action:manipulation}
+.auth-gate button{cursor:pointer}.auth-gate button:disabled{cursor:wait;opacity:.55}
+.auth-google,.auth-submit{display:block;width:100%;min-height:45px;border-radius:12px;font-weight:700!important;border:1px solid transparent;padding:10px 14px}
+.auth-google{background:#fff;color:#192236;display:flex;align-items:center;justify-content:center;gap:10px}.auth-google svg{width:20px;height:20px;flex:none}
+.auth-submit{background:linear-gradient(135deg,#f6d993,#c99b51);color:#1b2030;margin-top:15px;box-shadow:0 4px 18px #0003}
+.auth-divider{display:flex;align-items:center;gap:12px;color:#8c98ad;font-size:12px;margin:16px 0}.auth-divider::before,.auth-divider::after{content:'';height:1px;background:#9aa8c226;flex:1}
+.auth-gate label{display:block;text-align:right;font-size:12px;color:#d0d5e0;margin:10px 0 6px}
+.auth-gate input{display:block;width:100%;height:44px;background:#090f23a8;border:1px solid #51617c;border-radius:10px;color:#fff;padding:10px 12px;font-size:16px;text-align:left;direction:ltr;outline:none;user-select:text;-webkit-user-select:text}
+.auth-gate input:focus{border-color:#edc77c;box-shadow:0 0 0 3px #edc77c20}
+.auth-link{border:0;background:none;color:#e6c481;padding:10px 3px;font-size:13px!important;min-height:40px}.auth-switch{display:block;width:100%;margin-top:4px;color:#ccd5e8}.auth-forgot{display:block;margin-right:auto;font-size:12px!important;padding-bottom:0}
+.auth-form-status{font-size:13px;line-height:1.65;color:#ffb5b5;margin-top:8px;min-height:0}.auth-form-status:empty{display:none}.auth-form-status.ok{color:#9ce3c0}
+.auth-wait{padding:14px 0}.auth-wait p{margin:18px 0 6px}.auth-spinner{display:block;width:30px;height:30px;margin:6px auto;border:3px solid #edc77c26;border-top-color:#edc77c;border-radius:50%;animation:auth-spin .9s linear infinite}
+.auth-gate :focus-visible{outline:2px solid #ffe1a0;outline-offset:3px}
+@keyframes auth-spin{to{transform:rotate(360deg)}}
+@media(max-height:570px) and (min-width:620px){.auth-card{width:min(100%,720px);display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;gap:26px;padding:19px 26px}.auth-rule{display:none}.auth-brand{font-size:30px}.auth-gate h2{font-size:19px}.auth-gate p{margin-bottom:12px}.auth-divider{margin:10px 0}.auth-gate label{margin-top:7px}.auth-submit{margin-top:10px}.auth-switch{margin-top:0}.auth-gate input{height:40px}}
+@media(max-width:380px){.auth-gate{padding:12px}.auth-card{padding:22px 20px}.auth-brand{font-size:24px}}
+@media(prefers-reduced-motion:reduce){.auth-spinner{animation:none;border-color:#edc77c}}
