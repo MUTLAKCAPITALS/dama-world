@@ -4169,6 +4169,21 @@ buildLandmark=function(th){
     glbPlace('models/kuwait_towers.glb',cx,cz,H,ry,()=>_buildLandmark18.call(this,th));return}
   return _buildLandmark18.apply(this,arguments)};
 
+/* ================= v39: real dallah model (Blender, 2.5k triangles) ================= */
+// The traditional dallah built in Blender replaces the simple lathe shape; the old shape stays as the fallback.
+const DALLAH39={url:'models/dallah.glb',h:.44,silver:null};
+const _dallah39=dallah;
+dallah=function(x,y,z,s,col){const g=_dallah39.apply(this,arguments),w=W;
+  glbLoad(DALLAH39.url).then(({geo,mat})=>{if(W!==w||!g.parent)return;GC['glb:'+DALLAH39.url]=geo;
+    let m=mat;if(col){m=DALLAH39.silver||(DALLAH39.silver=mat.clone());m.color.set('#d4d8de')}
+    const bb=geo.boundingBox,k=DALLAH39.h/(bb.max.y-bb.min.y),me=new THREE.Mesh(geo,m);
+    me.scale.setScalar(k);me.rotation.y=Math.PI;me.position.y=-bb.min.y*k;me.castShadow=me.receiveShadow=true;me.userData.dallah39=true;
+    for(const c of g.children)c.visible=false;g.add(me);
+    m.emissive.set(NIGHT?'#2a3a44':'#000000');m.emissiveIntensity=NIGHT?.35:0
+  }).catch(e=>console.warn('dallah glb',e));
+  return g};
+/* ================= end real dallah ================= */
+
 /* ================= v19: شخصيات حقيقية متحركة (Meshy + عظام Mixamo) ================= */
 const SKC={count:0,M:{man:{url:'models/man.glb',h:1.08},tm:{url:'models/tourist_m.glb',h:1.06},tf:{url:'models/tourist_f.glb',h:1.0},ab:{url:'models/abaya.glb',h:1.0}}};
 function skSan(n){return(n||'').replace(/\s/g,'_').replace(/[\[\]\.:\/]/g,'')}
