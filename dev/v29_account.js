@@ -64,6 +64,8 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   ACC.adoptKey=uid+':'+((d&&d.saveId)||'legacy')+':'+(+(d&&d.saveRev)||0)+':'+cloudAt;ACC.baseRev=+(d&&d.saveRev)||0;ACC.baseSave=(d&&d.save)||null;ACC.baseId=(d&&d.saveId)||null;ACC.saveError=null;ACC.conflict=false;
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
   if(d&&d.save&&(restore||changed||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  /* A server-confirmed first save starts a member without inherited demo friendships (email or Google). */
+  if(!(d&&d.save)&&S.social){delete S.social;accRaw()}
   try{localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
   accPendSet(null);
   if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
