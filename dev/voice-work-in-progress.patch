@@ -1,0 +1,871 @@
+--- a/index.html
++++ b/index.html
+@@ -308,7 +308,7 @@
+     <button class="ibtn glass" id="bSet" aria-label="الإعدادات"><svg class="ic" data-ic="gear"></svg><small>الإعدادات</small></button>
+   </div>
+   <div id="voice">
+-    <button id="micB" class="glass" aria-label="المايك القريب"><svg class="ic" data-ic="mic"></svg></button>
++    <button id="micB" class="glass" aria-label="صوت العالم"><svg class="ic" data-ic="mic"></svg></button>
+     <button id="chatB" class="glass" aria-label="الدردشة"><svg class="ic" data-ic="chat"></svg></button>
+     <div id="hear" class="glass"><svg class="ic" data-ic="speaker" style="width:16px;height:16px"></svg><span id="hearT">لا أحد يتحدث قربك</span></div>
+   </div>
+@@ -1192,14 +1192,14 @@
+ $('#actMain').onclick=()=>{if(mode!=='explore')return;if(!nearNPC){toast('اقترب من أي شخص لتتحدّاه في الدامة');return}SFX.tap();openNPCCard(nearNPC)};
+ $('#mini').onclick=()=>openMap();
+ $('#bLook').onclick=()=>openSheet('look');$('#bShop').onclick=()=>openSheet('shop');$('#bTrip').onclick=()=>openSheet('trip');$('#bSet').onclick=()=>openSheet('set');
+-$('#micB').onclick=()=>{S.settings.mic=!S.settings.mic;persist();micUI();toast(S.settings.mic?'المايك القريب يعمل (محاكاة): يسمعك من حولك ضمن '+S.settings.range+' م':'تم إيقاف المايك القريب')};
++$('#micB').onclick=()=>voiceOpen();
+ function micUI(){const b=$('#micB');b.classList.toggle('on',S.settings.mic);b.innerHTML=ic(S.settings.mic?'mic':'micoff')}
+ 
+ /* ---------------- labels (names, bubbles, voice) ---------------- */
+ const labelsEl=$('#labels');const lpool=[];const v3=new THREE.Vector3();
+ function getLabel(i){if(!lpool[i]){const d=document.createElement('div');d.className='lbl';d.innerHTML='<div class="bub"></div><div class="nm"><span class="vox"><i></i><i></i><i></i></span><span class="tx"></span></div>';labelsEl.appendChild(d);lpool[i]={el:d,bub:d.firstChild,tx:d.querySelector('.tx'),last:'',lastB:'',cls:''}}return lpool[i]}
+ function updateLabels(){let i=0;const list=[];
+-  if(PSAY.t>0&&mode==='explore')list.push([player.ch,'',PSAY.text,false,0]);if(mode==='explore'||mode==='request'){const ih=inHall(),hr=W.hallRect;for(const n of npcs){if(n.blocked)continue;if(ih!==(n.pos.x>hr[0]&&n.pos.x<hr[1]&&n.pos.z>hr[2]&&n.pos.z<hr[3]))continue;const d=n.pos.distanceTo(player.pos);if(d<15)list.push([n.ch,n.name,n.sayT>0?n.line:'',n.talkT>0&&S.settings.mic!==null,d])}}
++  if(PSAY.t>0&&mode==='explore')list.push([player.ch,'',PSAY.text,false,0]);if(mode==='explore'||mode==='request'){const ih=inHall(),hr=W.hallRect;for(const n of npcs){if(n.blocked)continue;if(ih!==(n.pos.x>hr[0]&&n.pos.x<hr[1]&&n.pos.z>hr[2]&&n.pos.z<hr[3]))continue;const d=n.pos.distanceTo(player.pos);if(d<15)list.push([n.ch,n.name,n.sayT>0?n.line:'',false,d])}}
+   if(mode==='match'||mode==='toMatch'){for(const s of specs)if(s.sayT>0)list.push([s.ch,'',s.line,false,0])}
+   for(const[ch,name,say,talk]of list){v3.copy(ch.position);v3.y+=(ch.userData.sit>.5?1.45:2.05);v3.project(camera);if(v3.z>1||v3.x<-1.1||v3.x>1.1||v3.y<-1.1||v3.y>1.2)continue;const L=getLabel(i++);
+     const x=(v3.x*.5+.5)*innerWidth,y=(-v3.y*.5+.5)*innerHeight;L.el.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-100%)';L.el.style.display='';
+@@ -1345,7 +1345,7 @@
+   const pc=SHOP.color.find(c=>c.id===S.piece.color).hex;$('#meN').textContent=S.name;$('#meAv').textContent=S.name[0];$('#meAv').style.background=pc;$('#meAv').style.color=new THREE.Color(pc).getHSL({}).l>.5?'#2a1606':'#fff';
+   updMatchBtns();updCounts();setupClocks();$('#oppS').textContent='من '+n.from+' · '+DIFFN[game.diff]+' · '+npcRating(n);!game.online&&oppSay(game.quick?'مباراة سريعة! لا تتأخر':'بالتوفيق! لا تزعل إذا خسرت',2600)}
+ function updMatchBtns(){$('#mMic').classList.toggle('on',S.settings.matchVoice);$('#mMic').innerHTML=ic(S.settings.matchVoice?'mic':'micoff')+'<span>'+(S.settings.matchVoice?'مايكك مفتوح':'مايكك مغلق')+'</span>';$('#mMute').classList.toggle('on',S.settings.oppVoice);$('#mMute').innerHTML=ic(S.settings.oppVoice?'speaker':'speakeroff')+'<span>'+(S.settings.oppVoice?'صوت الخصم مسموع':'الخصم مكتوم')+'</span>'}
+-$('#mMic').onclick=()=>{S.settings.matchVoice=!S.settings.matchVoice;persist();updMatchBtns();toast(S.settings.matchVoice?'مايك المباراة مفتوح (محاكاة): يسمعك الخصم فقط':'أغلقت مايك المباراة')};
++$('#mMic').onclick=()=>voiceOpen();
+ $('#mMute').onclick=()=>{S.settings.oppVoice=!S.settings.oppVoice;persist();updMatchBtns();if(!S.settings.oppVoice)$('#oppP').classList.remove('talking','say')};
+ const QUICK=['بالتوفيق','حركة حلوة!','خلّني أفكّر','يا سلام'];
+ $('#mChat').onclick=()=>{const q=$('#quick');q.classList.toggle('show');q.innerHTML=QUICK.map((t,i)=>'<button class="glass" data-q="'+i+'">'+t+'</button>').join('');q.querySelectorAll('button').forEach(b=>b.onclick=()=>{q.classList.remove('show');if(game&&game.online){onlChat(+b.dataset.q);return}meSay(QUICK[+b.dataset.q]);SFX.pop();setTimeout(()=>oppSay(pick(['تسلم','هههه','شوف وش بسوي','ركّز زين']),2200),1200)})};
+@@ -1478,12 +1478,11 @@
+     if(sheetTab==='gfx'){h+='<div class="setrow"><label>توفير الطاقة<small>يخفّف الرسوم على هذا الجهاز. أوقفه لاختيار جودة أعلى.</small></label><button class="tog'+(POWER.enabled?' on':'')+'" data-a="do" data-k="powerSave" aria-label="توفير الطاقة" aria-pressed="'+POWER.enabled+'"></button></div><div class="setrow"><label>جودة الرسوم<small>المنخفضة: بلا ظلال ولا مؤثرات لأجهزة أقدم · المتوسطة: توهّج وألوان سينمائية وعشب وعمق ميدان · العالية: دقة وظلال أعلى وعشب أكثف</small></label><div class="seg">'+[['low','منخفضة'],['med','متوسطة'],['high','عالية']].map(q=>'<button'+(POWER.enabled?' disabled':'')+' class="'+(renderQuality()===q[0]?'on':'')+'" data-a="do" data-k="quality" data-v="'+q[0]+'">'+q[1]+'</button>').join('')+'</div></div>'+
+       '<div class="setrow"><label>وقت اليوم<small>الليل يبيّن الإنارة والنجوم والقمر</small></label><div class="seg">'+[['day','نهار'],['sunset','غروب'],['night','ليل']].map(q=>'<button class="'+((st.tod||'day')===q[0]?'on':'')+'" data-a="do" data-k="tod" data-v="'+q[0]+'">'+q[1]+'</button>').join('')+'</div></div>'+'<div class="setrow"><label>فعالية رمضان<small>فوانيس الشوارع، «رمضان كريم»، وغبقة في الدوانية</small></label><button class="tog'+(st.ramadan?' on':'')+'" data-a="do" data-k="ramadan" aria-label="فعالية رمضان"></button></div>'+'<div class="setrow"><label>حساسية الكاميرا</label><input type="range" id="sens" min="0.4" max="2" step="0.1" value="'+st.sens+'"></div>'+
+       '<div class="setrow"><label>عرض معدل الإطارات</label><button class="tog'+(st.fps?' on':'')+'" data-a="do" data-k="fps" aria-label="معدل الإطارات"></button></div>'}
+-    if(sheetTab==='voice'){h+='<div class="setrow"><label>أصوات الأجواء<small>نار وهواء، سوالف الدوانية، زحمة الشارع، طيور الحديقة، موج البحر</small></label><input type="range" id="amb" min="0" max="1" step="0.05" value="'+st.amb+'"></div>'+'<div class="setrow"><label>الموسيقى<small>ألحان تتغير حسب الدولة: خليجية، هندية، تركية</small></label><input type="range" id="mus" min="0" max="1" step="0.05" value="'+(st.music==null?.4:st.music)+'"></div>'+'<div class="setrow"><label>المايك القريب<small>يسمعك اللاعبون القريبون، ويخفت صوتهم كلما ابتعدوا</small></label><button class="tog'+(st.mic?' on':'')+'" data-a="do" data-k="mic" aria-label="المايك القريب"></button></div>'+
+-      '<div class="setrow"><label>مدى السماع: <span id="rgV">'+st.range+'</span> م</label><input type="range" id="rng" min="5" max="20" step="1" value="'+st.range+'"></div>'+
++    if(sheetTab==='voice'){h+='<div class="setrow"><label>أصوات الأجواء<small>نار وهواء، سوالف الدوانية، زحمة الشارع، طيور الحديقة، موج البحر</small></label><input type="range" id="amb" min="0" max="1" step="0.05" value="'+st.amb+'"></div>'+'<div class="setrow"><label>الموسيقى<small>ألحان تتغير حسب الدولة: خليجية، هندية، تركية</small></label><input type="range" id="mus" min="0" max="1" step="0.05" value="'+(st.music==null?.4:st.music)+'"></div>'+'<div class="setrow"><label>صوت العالم<small>قناة صوت حقيقية للمشاركين بنفس الدولة والقناة</small></label><button class="tog'+(st.mic?' on':'')+'" data-a="do" data-k="mic" aria-label="صوت العالم"></button></div>'+
+       '<div class="setrow"><label>صوت بين المتنافسين أثناء المباراة</label><button class="tog'+(st.matchVoice?' on':'')+'" data-a="do" data-k="matchVoice" aria-label="صوت المباراة"></button></div>'+
+       '<div class="sec">المكتومون</div><div class="plist">'+(S.muted.length?S.muted.map(k=>'<div><span>'+k.split('|')[0]+' · '+k.split('|')[1]+'</span><button data-a="do" data-k="unmute" data-v="'+k+'">إلغاء الكتم</button></div>').join(''):'<div><span style="color:var(--muted)">لا يوجد</span></div>')+'</div>'+
+       '<div class="sec">المحظورون</div><div class="plist">'+(S.blocked.length?S.blocked.map(k=>'<div><span>'+k.split('|')[0]+' · '+k.split('|')[1]+'</span><button data-a="do" data-k="unblock" data-v="'+k+'">إلغاء الحظر</button></div>').join(''):'<div><span style="color:var(--muted)">لا يوجد</span></div>')+'</div>'+
+-      '<div class="note">الصوت في هذه المعاينة محاكاة بصرية: مؤشرات من يتحدث قربك ومستوى الصوت حسب المسافة. لا يتم تشغيل المايكروفون.</div>'}
++      '<div class="note">صوت العالم والمباراة حقيقي. افتح قناة الصوت ثم اضغط فتح المايك؛ يبدأ مغلقًا ويتوقف عند إخفاء اللعبة.</div>'}
+     if(sheetTab==='about'){h+='<p style="line-height:1.8;color:#e9dcc3;margin:0 0 10px">هذه نسخة أولى قابلة للعب لاختبار الإحساس: التجوّل، الدوانية، طلب التحدّي، كاميرا المباراة، وقواعد الدامة الكويتية. اللاعبون والجمهور يتحكم بهم الكمبيوتر.</p>'+
+       '<div class="sec">ما هو حقيقي الآن</div><div class="quest done"><span class="ck">'+ic('check')+'</span><span class="qt" style="text-decoration:none;color:var(--text)">قواعد الدامة كاملة: أكل إجباري، أكبر عدد، أكل متسلسل، والكش</span></div><div class="quest done"><span class="ck">'+ic('check')+'</span><span class="qt" style="text-decoration:none;color:var(--text)">عالم ثلاثي الأبعاد بثلاث وجهات وتصادم وكاميرا شخص ثالث</span></div>'+
+       '<div class="sec">المخطط للإصدار الأونلاين (iOS وAndroid)</div><div class="note" style="margin-top:0">• خوادم غرف لكل منطقة مع مزامنة الحركة، وخادم مباريات يتحقق من كل نقلة.<br>• صوت مكاني قريب يخفت بالمسافة، وقناة صوت خاصة بين المتنافسين.<br>• كتم وحظر وإبلاغ مرتبطة بالحساب، ومراجعة البلاغات.<br>• متجر تجميلي عبر App Store وGoogle Play، دون أي أفضلية في اللعب.</div>'+
+@@ -1505,6 +1504,7 @@
+   if(k==='coinpack'){const o=SHOP.coins.find(x=>x.id===v);return buyUSD(null,o.name,o.usd,()=>{addCoins(o.amount);renderSheet()})}
+   if(k==='travel'){closeLayer();travelTo(v);return}
+   if(k==='quality'){S.settings.quality=v;persist();applyQuality();renderSheet();return}
++  if(k==='mic'||k==='matchVoice'){voiceOpen();return}
+   if(k==='fps'||k==='mic'||k==='matchVoice'||k==='unlockAll'){if(k==='unlockAll')S.unlockAll=!S.unlockAll;else S.settings[k]=!S.settings[k];persist();micUI();$('#fps').hidden=!S.settings.fps;updateProfile();renderSheet();return}
+   if(k==='unmute'){S.muted=S.muted.filter(x=>x!==v);persist();renderSheet();return}
+   if(k==='unblock'){S.blocked=S.blocked.filter(x=>x!==v);for(const n of npcs)if(n.name+'|'+n.from===v){n.blocked=false;n.ch.visible=true}persist();renderSheet();toast('ألغيت الحظر');return}
+@@ -4708,45 +4708,158 @@
+ try{applyQuality()}catch(e){}
+ /* Power saving defaults on for phones; the device-local toggle preserves saved quality. */
+ 
+-/* ================= v27: صوت حقيقي بين اللاعبين بالمباراة الأونلاين (WebRTC) ================= */
+-const VC={pc:null,local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,raf:0,needTap:false};
++/* ================= v37: real opt-in world and match voice ================= */
++// Firebase carries only authenticated signaling. Audio travels through WebRTC, never a save/document.
++const VC={gen:0,uid:null,kind:null,space:null,slot:null,session:null,matchId:'',local:null,peers:new Map(),rows:[],unsub:null,timer:0,beatBusy:false,lastBeat:0,busy:false,micBusy:false,micGen:0,error:'',channel:1,muted:new Set(),pc:null};
+ const VC_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
+-async function vcPublish(data,pc,ref,epoch){if(VC.pc!==pc||ONL.ref!==ref)return;await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists||VC.pc!==pc||ONL.ref!==ref)return;const r=snap.data();if((+r.voiceEpoch||0)!==epoch||r.state!=='play')return;tx.update(ref,data)})}
+-async function vcStart(){if(VC.pc||!ONL.ref||!game||!game.online||game.over)return;const ref=ONL.ref,epoch=+(ONL.room&&ONL.room.voiceEpoch)||0,role=ONL.role;
+-  const pc=VC.pc=new RTCPeerConnection({iceServers:VC_ICE}),gen=VC.gen=(VC.gen||0)+1;VC.role=role;VC.epoch=epoch;VC.gotIce=0;
+-  const current=()=>VC.pc===pc&&VC.gen===gen&&ONL.ref===ref&&(+ONL.room?.voiceEpoch||0)===epoch;
+-  const out=VC.audio=document.createElement('audio');out.autoplay=true;out.playsInline=true;out.setAttribute('playsinline','');document.body.appendChild(out);
+-  pc.ontrack=e=>{if(!current()){for(const t of e.streams[0]?.getTracks()||[])t.stop();return}out.srcObject=e.streams[0];out.muted=!S.settings.oppVoice;out.play().catch(()=>{if(current()){VC.needTap=true;toast('اضغط على الشاشة عشان تسمع خصمك')}});vcMeter(e.streams[0])};
+-  pc.onicecandidate=e=>{if(!e.candidate||!current())return;vcPublish({[role==='host'?'hIce':'gIce']:firebase.firestore.FieldValue.arrayUnion(JSON.stringify(e.candidate.toJSON()))},pc,ref,epoch).catch(()=>{})};
+-  pc.onconnectionstatechange=()=>{if(!current())return;if(pc.connectionState==='connected')toast('🎙️ الصوت متصل');if(pc.connectionState==='failed')toast('الصوت ما اتصل؛ تقدر تكمل بالرسائل السريعة')};
++function voiceStamp(){return firebase.firestore.FieldValue.serverTimestamp()}
++function voiceTime(t){return t&&typeof t.toMillis==='function'?t.toMillis():0}
++function voiceId(){return Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('')}
++function voiceSeats(kind=VC.kind,space=VC.space){return ONL.db.collection(kind).doc(space).collection('seats')}
++function voiceCurrent(gen=VC.gen){return !!VC.uid&&VC.gen===gen&&rsUid()===VC.uid&&!document.hidden&&navigator.onLine!==false&&!window.DAMA_CONTEXT_LOST&&!CTL.ban}
++function voiceAllowed(){if(VC.kind==='voiceMatches')return !!(game&&game.online&&!game.over&&ONL.room&&ONL.room.state==='play'&&ONL.room.matchId===VC.matchId&&ONL.code===VC.space);return mode==='explore'&&!LOBBY.on&&VC.space===S.country+'_'+VC.channel}
++function voiceError(e){return ({'voice-full':'القناة مكتملة؛ اختَر قناة ثانية.','voice-session':'الصوت مفتوح بحسابك في جلسة ثانية.','voice-lost':'انتهى اتصال الصوت؛ اضغط إعادة الاتصال.','voice-name':'اختَر اسمك المسجّل أولًا.','permission-denied':'تعذّر السماح بالصوت؛ تأكد من الحساب وإعدادات الإدارة.','resource-exhausted':'خدمة الصوت وصلت حد الاستخدام مؤقتًا.','NotAllowedError':'اسمح للعبة باستخدام المايك من إعدادات المتصفح، ثم جرّب مرة ثانية.','NotFoundError':'ما لقينا مايك متصل بالجهاز.','NotReadableError':'المايك مشغول بتطبيق آخر؛ سكّره وجرّب.'})[e&&(e.code||e.name)]||'تعذّر اتصال الصوت؛ جرّب مرة ثانية.'}
++async function voiceClaim(kind,space,session,uid,name,nameKey,matchId){
++  const seats=voiceSeats(kind,space),own=ONL.db.collection('voiceUsers').doc(uid),count=kind==='voiceMatches'?2:8;
++  return ONL.db.runTransaction(async tx=>{
++    const mine=await tx.get(own),refs=Array.from({length:count},(_,i)=>seats.doc(String(i))),snaps=[];
++    for(const ref of refs)snaps.push(await tx.get(ref));
++    let oldRef=null,old=null;
++    if(mine.exists){const m=mine.data();oldRef=voiceSeats(m.kind,m.space).doc(m.slot);old=await tx.get(oldRef);
++      if(old.exists&&old.data().session===m.session&&voiceTime(old.data().at)>Date.now()-90000){if(m.session===session&&m.kind===kind&&m.space===space)return m.slot;throw{code:'voice-session'}}}
++    const index=kind==='voiceMatches'?(ONL.role==='host'?0:1):snaps.findIndex(s=>!s.exists||voiceTime(s.data().at)<=Date.now()-90000);
++    if(index<0)throw{code:'voice-full'};
++    const current=snaps[index];if(current.exists&&voiceTime(current.data().at)>Date.now()-90000)throw{code:'voice-session'};
++    tx.set(refs[index],{uid,name,nameKey,session,matchId,at:voiceStamp(),mic:false});
++    tx.set(own,{kind,space,slot:String(index),session});return String(index);
++  });
++}
++async function voiceRelease(kind,space,slot,session,uid){
++  if(slot==null||!uid)return;const ref=voiceSeats(kind,space).doc(slot),own=ONL.db.collection('voiceUsers').doc(uid);
++  try{await ONL.db.runTransaction(async tx=>{const s=await tx.get(ref),m=await tx.get(own);if(s.exists&&s.data().uid===uid&&s.data().session===session)tx.delete(ref);if(m.exists&&m.data().session===session)tx.delete(own)})}catch(e){}
++}
++async function voiceJoin(kind,space){
++  if(VC.busy||VC.uid)return;if(!requirePlayAccount())return;
++  if(!rsUid()||!ACC.synced||!ACC.key){toast('اختَر اسمك المسجّل أولًا');return}
++  if(document.hidden||navigator.onLine===false||CTL.ban||!window.RTCPeerConnection){toast('الصوت غير متاح في هذه الجلسة');return}
++  const gen=++VC.gen,uid=rsUid(),session=voiceId();Object.assign(VC,{busy:true,uid,kind,space,session,slot:null,matchId:kind==='voiceMatches'?ONL.room?.matchId||'':'',error:'',rows:[]});voiceUI();
++  try{if(VC.releasing)await VC.releasing;if(!voiceCurrent(gen)||!voiceAllowed()){if(VC.gen===gen)voiceStop();return}
++    let slot;try{slot=await voiceClaim(kind,space,session,uid,ACC.name,ACC.key,VC.matchId)}catch(e){if(!voiceCurrent(gen)||!['unavailable','deadline-exceeded','aborted'].includes(e.code))throw e;slot=await voiceClaim(kind,space,session,uid,ACC.name,ACC.key,VC.matchId)}
++    if(!voiceCurrent(gen)||!voiceAllowed()){await voiceRelease(kind,space,slot,session,uid);if(VC.gen===gen)voiceStop();return}
++    VC.slot=slot;VC.lastBeat=Date.now();VC.unsub=voiceSeats().limit(kind==='voiceMatches'?2:8).onSnapshot(s=>{
++      if(!voiceCurrent(gen)||s.metadata.hasPendingWrites)return;
++      VC.rows=s.docs.map(d=>({slot:d.id,...d.data()}));const me=VC.rows.find(r=>r.slot===slot&&r.uid===uid&&r.session===session);
++      if(!me){voiceFail({code:'voice-lost'});return}voiceSync();voiceUI();
++    },e=>{if(VC.gen===gen)voiceFail(e)});
++    VC.timer=setInterval(voiceTick,1000);
++  }catch(e){if(VC.gen===gen)voiceFail(e)}finally{if(VC.gen===gen){VC.busy=false;voiceUI()}}
++}
++function voicePeerCurrent(p){return voiceCurrent(p.gen)&&VC.peers.get(p.uid)===p&&!p.closed&&voiceAllowed()}
++function voicePeerClose(p){p.closed=true;clearTimeout(p.iceTimer);clearTimeout(p.deadline);if(p.unsub)p.unsub();if(p.controlUnsub)p.controlUnsub();try{p.pc.close()}catch(e){}if(p.audio){p.audio.pause();p.audio.srcObject=null;p.audio.remove()}if(p.stream)for(const t of p.stream.getTracks())t.stop()}
++function voicePeerError(p,e){if(!voicePeerCurrent(p))return;p.state='failed';p.error=voiceError(e);voicePeerClose(p);VC.peers.delete(p.uid);VC.error='تعذّر الصوت مع '+p.name+'؛ اضغط إعادة الاتصال.';VC.muted.add('failed:'+p.session);voiceUI()}
++async function voicePublish(p,changes){
++  if(!voicePeerCurrent(p))return;await ONL.db.runTransaction(async tx=>{
++    const snap=await tx.get(p.out);if(!voicePeerCurrent(p))return;
++    const old=snap.exists?snap.data():null,base=old&&old.fromSession===VC.session&&old.toSession===p.session?old:{fromSession:VC.session,toSession:p.session,sdp:'',type:p.offerer?'offer':'answer',ice:[]};
++    const next={...base,...changes,at:voiceStamp()};if(changes.ice)next.ice=[...new Set([...base.ice,...changes.ice])].slice(0,32);tx.set(p.out,next);
++  });
++}
++async function voiceFlushIce(p){if(!voicePeerCurrent(p)||!p.ice.length)return;const ice=p.ice.splice(0,32);try{await voicePublish(p,{ice})}catch(e){voicePeerError(p,e)}}
++async function voiceRemote(p,data){
++  if(!voicePeerCurrent(p)||!data||data.fromSession!==p.session||data.toSession!==VC.session)return;
++  p.latest=data;if(p.signaling)return;p.signaling=true;
++  try{while(voicePeerCurrent(p)&&p.latest){const r=p.latest;p.latest=null;
++    if(r.sdp&&!p.pc.remoteDescription){const type=p.offerer?'answer':'offer';if(r.type!==type)throw Error('signal type');await p.pc.setRemoteDescription({type,sdp:r.sdp});if(!voicePeerCurrent(p))return;
++      if(!p.offerer){p.sender=p.pc.getSenders().find(s=>s.track?.kind==='audio')||p.pc.getTransceivers().find(t=>t.receiver.track.kind==='audio')?.sender;if(!p.sender)throw Error('audio sender');
++        const tr=p.pc.getTransceivers().find(t=>t.sender===p.sender);if(tr)tr.direction='sendrecv';
++        await p.sender.replaceTrack(voiceTrack());if(!voicePeerCurrent(p))return;const a=await p.pc.createAnswer();if(!voicePeerCurrent(p))return;await p.pc.setLocalDescription(a);if(!voicePeerCurrent(p))return;await voicePublish(p,{sdp:a.sdp,type:'answer'})}}
++    if(p.pc.remoteDescription)for(const raw of r.ice||[]){if(!voicePeerCurrent(p))return;if(p.got.has(raw))continue;p.got.add(raw);try{await p.pc.addIceCandidate(JSON.parse(raw))}catch(e){if(!voicePeerCurrent(p))return;throw e}}
++  }}catch(e){voicePeerError(p,e)}finally{p.signaling=false}
++}
++function voiceTrack(){return !CTL.mute&&!CTL.ban&&VC.local?VC.local.getAudioTracks().find(t=>t.readyState!=='ended'&&t.enabled)||null:null}
++function voiceAudio(p){if(!p.audio)return;const blocked=rcBlocked(p.uid)||VC.muted.has(p.uid)||p.adminMuted||p.banned,volume=Math.max(0,Math.min(1,(S.settings.opp??1)*(S.settings.vol??1)));p.audio.volume=volume;p.audio.muted=blocked||volume<=0.001||(VC.kind==='voiceMatches'?!S.settings.oppVoice:false)}
++async function voicePeer(row){
++  const p={uid:row.uid,name:row.name,slot:row.slot,session:row.session,gen:VC.gen,offerer:+VC.slot<+row.slot,pc:null,sender:null,state:'connecting',ice:[],got:new Set(),closed:false,signaling:false,latest:null};
++  VC.peers.set(p.uid,p);
++  try{p.pc=new RTCPeerConnection({iceServers:VC_ICE,bundlePolicy:'max-bundle'});p.out=voiceSeats().doc(VC.slot).collection('signals').doc(row.slot);p.input=voiceSeats().doc(row.slot).collection('signals').doc(VC.slot);
++    p.pc.onicecandidate=e=>{if(!voicePeerCurrent(p)||!e.candidate||p.ice.length>=32)return;p.ice.push(JSON.stringify(e.candidate.toJSON()));clearTimeout(p.iceTimer);p.iceTimer=setTimeout(()=>voiceFlushIce(p),250)};
++    p.pc.ontrack=e=>{if(!voicePeerCurrent(p)){e.track.stop();return}if(p.audio)return;
++      p.stream=e.streams[0]||new MediaStream([e.track]);const a=p.audio=document.createElement('audio');a.autoplay=true;a.playsInline=true;a.setAttribute('playsinline','');a.srcObject=p.stream;document.body.appendChild(a);voiceAudio(p);a.play().catch(()=>{if(voicePeerCurrent(p)){p.needTap=true;voiceUI()}})};
++    p.pc.onconnectionstatechange=()=>{if(!voicePeerCurrent(p))return;const s=p.pc.connectionState;p.state=s;if(s==='connected')clearTimeout(p.deadline);if(s==='failed'){voicePeerError(p,{code:'voice-lost'});return}voiceUI()};
++    p.controlUnsub=ONL.db.collection('voiceControls').doc(p.uid).onSnapshot(s=>{if(!voicePeerCurrent(p))return;const c=s.exists?s.data():{};p.adminMuted=!!c.mute;p.banned=!!c.ban;voiceAudio(p);if(p.banned)voicePeerError(p,{code:'voice-lost'})},e=>voicePeerError(p,e));
++    p.unsub=p.input.onSnapshot(s=>{if(voicePeerCurrent(p)&&s.exists&&!s.metadata.hasPendingWrites)voiceRemote(p,s.data())},e=>voicePeerError(p,e));
++    p.deadline=setTimeout(()=>{if(voicePeerCurrent(p)&&p.pc.connectionState!=='connected')voicePeerError(p,{code:'voice-lost'})},25000);
++    if(p.offerer){const trans=p.pc.addTransceiver('audio',{direction:'sendrecv'});p.sender=trans.sender;await p.sender.replaceTrack(voiceTrack());if(!voicePeerCurrent(p))return;const o=await p.pc.createOffer();if(!voicePeerCurrent(p))return;await p.pc.setLocalDescription(o);if(!voicePeerCurrent(p))return;await voicePublish(p,{sdp:o.sdp,type:'offer'})}
++  }catch(e){voicePeerError(p,e)}
++}
++function voiceSync(){if(!voiceCurrent()||VC.slot==null)return;const rows=VC.rows.filter(r=>r.uid!==VC.uid&&r.session&&voiceTime(r.at)>Date.now()-90000&&r.matchId===VC.matchId&&!rcBlocked(r.uid));
++  for(const [uid,p]of VC.peers)if(!rows.some(r=>r.uid===uid&&r.session===p.session)){voicePeerClose(p);VC.peers.delete(uid)}
++  for(const r of rows)if(!VC.peers.has(r.uid)&&!VC.muted.has('failed:'+r.session))voicePeer(r);
++}
++async function voiceBeat(){if(VC.beatBusy||!voiceCurrent()||VC.slot==null)return;const gen=VC.gen,ref=voiceSeats().doc(VC.slot),session=VC.session;VC.beatBusy=true;
++  try{await ONL.db.runTransaction(async tx=>{const s=await tx.get(ref);if(!voiceCurrent(gen))return;if(!s.exists||s.data().session!==session)throw{code:'voice-lost'};tx.update(ref,{at:voiceStamp(),mic:!!voiceTrack()})});if(voiceCurrent(gen))VC.lastBeat=Date.now()}
++  catch(e){if(voiceCurrent(gen))voiceFail(e)}finally{if(VC.gen===gen)VC.beatBusy=false}
++}
++function voiceTick(){if(!voiceCurrent()||!voiceAllowed()){voiceStop();return}if(CTL.mute&&VC.local)voiceMicOff();if(Date.now()-VC.lastBeat>70000){voiceFail({code:'voice-lost'});return}if(Date.now()-VC.lastBeat>=30000)voiceBeat();voiceSync();for(const p of VC.peers.values())voiceAudio(p);voiceUI()}
++function voiceMicOff(){VC.micGen++;VC.micBusy=false;const stream=VC.local;VC.local=null;if(stream)for(const t of stream.getTracks()){t.enabled=false;t.stop()}for(const p of VC.peers.values())if(p.sender)p.sender.replaceTrack(null).catch(e=>voicePeerError(p,e));S.settings.matchVoice=false;S.settings.mic=false;voiceUI()}
++async function voiceMic(){
++  if(voiceTrack()){voiceMicOff();voiceBeat();return}if(VC.micBusy){voiceMicOff();return}if(!voiceCurrent()||VC.slot==null)return;if(CTL.mute){toast('المايك مقفول عليك من الإدارة');return}
++  const gen=VC.gen,micGen=++VC.micGen;VC.micBusy=true;voiceUI();
+   try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+-    if(!current()){stream.getTracks().forEach(t=>t.stop());return}VC.local=stream;stream.getAudioTracks().forEach(t=>{t.enabled=!!S.settings.matchVoice&&!(typeof CTL!=='undefined'&&CTL.mute);pc.addTrack(t,stream)})}
+-  catch(e){if(!current())return;toast('المايك مقفول — تسمع خصمك بس');pc.addTransceiver('audio',{direction:'recvonly'})}
+-  if(!current())return;if(role==='host'){const o=await pc.createOffer();if(!current())return;await pc.setLocalDescription(o);if(!current())return;await vcPublish({vOffer:o.sdp},pc,ref,epoch)}
+-  if(current())await vcSignal()}
+-/* تبادل الإشارات من مستند الغرفة */
+-async function vcSignal(){const pc=VC.pc,ref=ONL.ref,r=ONL.room,epoch=VC.epoch;if(!pc||!r||VC.signaling||(+r.voiceEpoch||0)!==epoch)return;VC.signaling=true;
+-  const current=()=>VC.pc===pc&&ONL.ref===ref&&(+ONL.room?.voiceEpoch||0)===epoch;
+-  try{if(VC.role==='guest'&&r.vOffer&&!pc.remoteDescription){await pc.setRemoteDescription({type:'offer',sdp:r.vOffer});if(!current())return;const a=await pc.createAnswer();if(!current())return;await pc.setLocalDescription(a);if(!current())return;await vcPublish({vAnswer:a.sdp},pc,ref,epoch)}
+-    if(VC.role==='host'&&r.vAnswer&&!pc.remoteDescription){await pc.setRemoteDescription({type:'answer',sdp:r.vAnswer});if(!current())return}
+-    const ice=(VC.role==='host'?r.gIce:r.hIce)||[];while(current()&&pc.remoteDescription&&VC.gotIce<ice.length){const i=VC.gotIce;try{await pc.addIceCandidate(JSON.parse(ice[i]))}catch(e){}if(!current())return;VC.gotIce=i+1}
+-  }catch(e){if(current())console.warn('voice',e.code||e.message)}finally{if(VC.pc===pc){VC.signaling=false;if(current()&&ONL.room!==r)Promise.resolve().then(vcSignal)}}}
+-/* مؤشر "يتحدث الآن" من مستوى صوت الخصم */
+-function vcMeter(stream){try{clearTimeout(VC.raf);if(VC.source)VC.source.disconnect();if(VC.ana)VC.ana.disconnect();const ctx=audio();if(!ctx)return;const pc=VC.pc,src=VC.source=ctx.createMediaStreamSource(stream),an=VC.ana=ctx.createAnalyser();an.fftSize=256;src.connect(an);const d=new Uint8Array(an.frequencyBinCount);
+-  const f=()=>{if(VC.pc!==pc)return;an.getByteFrequencyData(d);let sum=0;for(let i=2;i<40;i++)sum+=d[i];const p=$('#oppP');if(p)p.classList.toggle('talking',S.settings.oppVoice&&sum/38>28);VC.raf=setTimeout(f,120)};f()}catch(e){}}
+-function vcStop(){VC.gen=(VC.gen||0)+1;clearTimeout(ONL.voiceTimer);clearTimeout(VC.raf);const pc=VC.pc;VC.pc=null;
+-  if(VC.local)VC.local.getTracks().forEach(t=>t.stop());if(pc){pc.ontrack=pc.onicecandidate=pc.onconnectionstatechange=null;try{pc.close()}catch(e){}}
+-  if(VC.audio){const stream=VC.audio.srcObject;if(stream&&stream.getTracks)stream.getTracks().forEach(t=>t.stop());VC.audio.pause&&VC.audio.pause();VC.audio.srcObject=null;VC.audio.remove()}
+-  for(const node of [VC.source,VC.ana])try{if(node)node.disconnect()}catch(e){}
+-  const p=$('#oppP');if(p)p.classList.remove('talking');Object.assign(VC,{local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,source:null,needTap:false,signaling:false})}
+-document.addEventListener('pointerdown',()=>{if(VC.needTap&&VC.audio){VC.audio.play().then(()=>{VC.needTap=false}).catch(()=>{})}},true);
+-/* أزرار المايك والسماعة تتحكم بالصوت الحقيقي بالأونلاين */
+-const _mMic27=$('#mMic').onclick;$('#mMic').onclick=function(){if(game&&game.online){S.settings.matchVoice=!S.settings.matchVoice;persist();updMatchBtns();if(VC.local)VC.local.getAudioTracks().forEach(t=>t.enabled=S.settings.matchVoice&&!CTL.mute);toast(S.settings.matchVoice?'🎙️ مايكك مفتوح — خصمك يسمعك':'أغلقت مايكك');return}return _mMic27.apply(this,arguments)};
+-const _mMute27=$('#mMute').onclick;$('#mMute').onclick=function(){const r=_mMute27.apply(this,arguments);if(VC.audio)VC.audio.muted=!S.settings.oppVoice;return r};
+-/* ربط بدورة الأونلاين */
++    // Disable before the first await: permission may arrive after leaving, muting or switching accounts.
++    for(const t of stream.getTracks())t.enabled=false;
++    if(!voiceCurrent(gen)||!voiceAllowed()||VC.micGen!==micGen||CTL.mute){for(const t of stream.getTracks())t.stop();return}
++    VC.local=stream;const track=stream.getAudioTracks()[0];if(!track)throw{ name:'NotFoundError'};track.enabled=true;track.onended=()=>{if(VC.local===stream){voiceMicOff();voiceBeat()}};
++    for(const p of VC.peers.values()){if(!voiceCurrent(gen)||VC.micGen!==micGen)break;if(p.sender)await p.sender.replaceTrack(track)}
++    if(!voiceCurrent(gen)||VC.micGen!==micGen||CTL.mute){for(const t of stream.getTracks())t.stop();return}
++    S.settings.matchVoice=VC.kind==='voiceMatches';S.settings.mic=VC.kind==='voiceWorlds';VC.error='';await voiceBeat();
++  }catch(e){if(VC.gen===gen&&VC.micGen===micGen){voiceMicOff();VC.error=voiceError(e);toast(VC.error)}}finally{if(VC.gen===gen&&VC.micGen===micGen)VC.micBusy=false;voiceUI()}
++}
++function voiceStop(message=''){
++  const {kind,space,slot,session,uid}=VC;VC.gen++;clearInterval(VC.timer);if(VC.unsub)VC.unsub();VC.unsub=null;voiceMicOff();for(const p of VC.peers.values())voicePeerClose(p);VC.peers.clear();
++  Object.assign(VC,{uid:null,kind:null,space:null,slot:null,session:null,matchId:'',rows:[],busy:false,beatBusy:false,lastBeat:0,error:message,timer:0});VC.muted.clear();voiceUI();if(uid)VC.releasing=voiceRelease(kind,space,slot,session,uid);
++}
++function voiceFail(e){const message=voiceError(e);voiceStop(message);toast(message)}
++function voiceStatus(){if(VC.busy)return'جاري الاتصال بالصوت…';if(VC.error)return VC.error;if(!VC.uid)return'الصوت غير متصل';const connected=[...VC.peers.values()].filter(p=>p.state==='connected').length;if(connected)return'الصوت متصل مع '+connected+' '+(connected===1?'لاعب':'لاعبين');return VC.peers.size?'جاري توصيل اللاعبين…':'أنت وحدك في قناة الصوت';}
++function voiceUI(){
++  const track=voiceTrack(),modal=$('#realVoiceStatus'),key=JSON.stringify([VC.kind,!!track,VC.micBusy,VC.slot,CTL.mute,S.settings.oppVoice,voiceStatus(),VC.rows.map(r=>[r.uid,r.session,r.mic]),[...VC.peers.values()].map(p=>[p.uid,p.state,p.needTap,p.adminMuted]),[...VC.muted]]);
++  if(VC.uiKey===key&&VC.uiModal===modal)return;VC.uiKey=key;VC.uiModal=modal;
++  const b=$('#micB');if(b){b.classList.toggle('on',VC.kind==='voiceWorlds'&&!!track);b.innerHTML=ic(VC.kind==='voiceWorlds'&&track?'mic':'micoff');b.setAttribute('aria-label','صوت العالم')}
++  const hear=$('#hearT');if(hear)hear.textContent=VC.kind==='voiceWorlds'?voiceStatus():'صوت العالم مغلق';
++  const mic=$('#mMic');if(mic){const on=VC.kind==='voiceMatches'&&!!track;mic.classList.toggle('on',on);mic.innerHTML=ic(on?'mic':'micoff')+'<span>'+(VC.micBusy?'بانتظار إذن المايك':on?'مايكك مفتوح':VC.kind==='voiceMatches'?'افتح المايك':'توصيل صوت المباراة')+'</span>'}
++  const mute=$('#mMute');if(mute){mute.classList.toggle('on',S.settings.oppVoice);mute.innerHTML=ic(S.settings.oppVoice?'speaker':'speakeroff')+'<span>'+(S.settings.oppVoice?'صوت الخصم مفعّل':'الخصم مكتوم')+'</span>'}
++  const status=modal;if(status)status.textContent=voiceStatus()+([...VC.peers.values()].some(p=>p.needTap)?' · اضغط الشاشة لتفعيل السماع':'');const toggle=$('#realVoiceMic');if(toggle){toggle.textContent=VC.micBusy?'إلغاء طلب المايك':track?'إغلاق المايك':'فتح المايك';toggle.disabled=!VC.uid||VC.slot==null||CTL.mute}
++  const list=$('#realVoicePlayers');if(list){const rows=VC.rows.filter(r=>voiceTime(r.at)>Date.now()-90000);list.innerHTML=rows.map(r=>'<div class="rv-player"><span>'+esc(r.name)+(r.uid===VC.uid?' (أنت)':'')+'</span><small>'+esc(r.uid===VC.uid?(track?'مايك مفتوح':'مايك مغلق'):VC.peers.get(r.uid)?.state==='connected'?'متصل':'غير متصل')+'</small>'+(r.uid===VC.uid?'':'<button class="sbtn" data-a="vcmute" data-uid="'+esc(r.uid)+'">'+(VC.muted.has(r.uid)?'سماع':'كتم')+'</button><button class="sbtn" data-a="vcreport" data-uid="'+esc(r.uid)+'">بلّغ</button>')+'</div>').join('')||'<p>ما فيه لاعبين بقناتك حاليًا.</p>'}
++}
++function voiceOpen(){
++  const match=!!(game&&game.online&&!game.over&&ONL.ref&&ONL.room?.state==='play'),title=match?'صوت المباراة':'صوت العالم';
++  onlDlg('<h3>'+title+'</h3><p id="realVoiceStatus"></p>'+(match?'':'<p>يسمعك المشاركون بنفس الدولة والقناة، بحد أقصى 8 لاعبين. الصوت مو مرتبط بالمسافة.</p><label>القناة <select id="voiceChannel">'+Array.from({length:10},(_,i)=>'<option value="'+(i+1)+'"'+(VC.channel===i+1?' selected':'')+'>'+(i+1)+'</option>').join('')+'</select></label>')+'<div id="realVoicePlayers"></div><div class="row"><button class="gbtn" data-a="vcjoin">'+(VC.uid?'إعادة الاتصال':'دخول للاستماع')+'</button><button class="gbtn" id="realVoiceMic" data-a="vcmic">فتح المايك</button><button class="gbtn" data-a="vcleave">مغادرة الصوت</button><button class="gbtn" data-a="vcclose">إغلاق النافذة</button></div><p class="muted">المايك يبدأ مغلقًا. عند مغادرة العالم أو إخفاء اللعبة يتوقف الصوت.</p>',{
++    vcjoin:async()=>{const channel=Number($('#voiceChannel')?.value||VC.channel);if(VC.uid||VC.busy){const old={kind:VC.kind,space:VC.space,slot:VC.slot,session:VC.session,uid:VC.uid};voiceStop();await voiceRelease(old.kind,old.space,old.slot,old.session,old.uid)}VC.channel=Math.max(1,Math.min(10,channel));if(match)await vcStart();else if(mode==='explore'&&!LOBBY.on)await voiceJoin('voiceWorlds',S.country+'_'+VC.channel);else toast('ادخل العالم عشان تستخدم صوته');voiceUI()},
++    vcmic:voiceMic,vcleave:()=>voiceStop(),vcclose:closeLayer,
++    vcmute:b=>{const uid=b.dataset.uid;if(VC.muted.has(uid))VC.muted.delete(uid);else VC.muted.add(uid);const p=VC.peers.get(uid);if(p)voiceAudio(p);voiceUI()},
++    vcreport:async b=>{const row=VC.rows.find(r=>r.uid===b.dataset.uid);if(!row||!VC.uid)return;try{await ONL.db.collection('reports').add({by:VC.uid,byName:ACC.name,target:row.uid,targetName:row.name,reason:'voice',note:'بلاغ من قناة الصوت '+VC.space,at:Date.now(),createdAt:voiceStamp(),status:'open'});toast('وصل البلاغ للإدارة')}catch(e){toast(voiceError(e))}}
++  });voiceUI();
++}
++async function vcStart(){if(!game||!game.online||game.over||!ONL.code||ONL.room?.state!=='play')return;if(VC.uid&&VC.kind==='voiceMatches'&&VC.space===ONL.code)return;if(VC.uid){const old={...VC};voiceStop();await voiceRelease(old.kind,old.space,old.slot,old.session,old.uid)}await voiceJoin('voiceMatches',ONL.code)}
++function vcStop(){voiceStop()}
++function vcSignal(){} // v2 room signaling remains readable for old saved games; v37 uses authenticated seats.
++function voiceInstall(){
++  S.settings.mic=false;S.settings.matchVoice=false;micUI=voiceUI;updateHear=function(){const el=$('#hearT'),text=VC.kind==='voiceWorlds'?voiceStatus():'صوت العالم مغلق';if(el&&el.textContent!==text)el.textContent=text};updMatchBtns=voiceUI;$('#micB').onclick=voiceOpen;
++  $('#mMic').onclick=async()=>{if(!game||!game.online){toast('الصوت متاح مع لاعب حقيقي فقط');return}if(VC.kind!=='voiceMatches'){await vcStart();voiceOpen();return}await voiceMic()};
++  $('#mMute').onclick=()=>{if(!game||!game.online){toast('ما فيه خصم بشري بهالمباراة');return}S.settings.oppVoice=!S.settings.oppVoice;persist();for(const p of VC.peers.values())voiceAudio(p);voiceUI()};
++  const matchBar=$('#mLeft');if(matchBar){const btn=document.createElement('button');btn.className='mbtn glass';btn.id='voiceDetails';btn.textContent='حالة الصوت';btn.onclick=voiceOpen;matchBar.appendChild(btn)}
++  const previousMute=ctlApplyMute;ctlApplyMute=function(){previousMute();if(CTL.ban)voiceStop();else if(CTL.mute){voiceMicOff();voiceBeat()}};
++  const previousStop=rsStop;rsStop=function(clear){voiceStop();return previousStop.apply(this,arguments)};
++  const previousLobby=enterLobby;enterLobby=function(){voiceStop();return previousLobby.apply(this,arguments)};
++  const previousTravel=travelTo;travelTo=async function(){voiceStop();return previousTravel.apply(this,arguments)};
++  const previousBegin=beginMatch;beginMatch=function(){if(!requirePlayAccount())return;voiceStop();return previousBegin.apply(this,arguments)};
++  document.addEventListener('visibilitychange',()=>{if(document.hidden)voiceStop('الصوت توقف بالخلفية؛ أعد الاتصال عند الرجوع.')});addEventListener('offline',()=>voiceStop('انقطع الإنترنت؛ أعد الاتصال بالصوت بعد رجوعه.'));addEventListener('pagehide',()=>voiceStop());
++  document.addEventListener('pointerdown',()=>{for(const p of VC.peers.values())if(p.needTap&&p.audio)p.audio.play().then(()=>{p.needTap=false;voiceUI()}).catch(()=>{})},true);
++  const style=document.createElement('style');style.textContent='.rv-player{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #c9933f44}.rv-player span{flex:1}.rv-player button{min-height:38px}.onl #voiceChannel{font:inherit;padding:8px;background:#142034;color:#ffe3a6}#realVoicePlayers{max-height:28dvh;overflow:auto}.onl:has(#realVoiceStatus) .dlg{max-height:calc(100dvh - 24px - env(safe-area-inset-bottom));overflow:auto}.onl #realVoiceStatus{font-weight:700;min-height:1.4em}';document.head.appendChild(style);voiceUI();
++}
++/* ================= end real voice ================= */
++
+ const _onlStart27=onlStart;onlStart=async function(){if(!requirePlayAccount())return;const r=await _onlStart27.apply(this,arguments);const ref=ONL.ref,id=game&&game.id;clearTimeout(ONL.voiceTimer);ONL.voiceTimer=setTimeout(()=>{if(ONL.ref===ref&&game&&game.id===id&&!game.over)vcStart().catch(e=>console.warn('voice',e))},400);return r};
+-const _onlPump27=onlPump;onlPump=function(){vcSignal();return _onlPump27.apply(this,arguments)};
+-/* Voice shares the single room listener; onlClose owns its cleanup. */
+ const _onlClose27=onlClose;onlClose=function(){vcStop();return _onlClose27.apply(this,arguments)};
+ 
+ /* ================= v28: صورة الملف الشخصي — اللاعب يختار صورته من جواله ================= */
+@@ -5168,10 +5281,10 @@
+     try{if(typeof AMB!=='undefined'&&AMB.master)sndSet(AMB.master,s.amb)}catch(e){}
+     /* همهمة الناس: نمرّرها على قناتها */
+     try{if(typeof AMB!=='undefined'&&AMB.chat&&!SND.crowdOn){AMB.chat.disconnect();AMB.chat.connect(SND.crowd);_conn33.call(SND.crowd,AMB.master);SND.crowdOn=true}}catch(e){}}
+-  try{if(typeof VC!=='undefined'&&VC.audio){VC.audio.volume=Math.max(0,Math.min(1,s.opp*s.vol));if(s.opp<=0.001||s.vol<=0.001)VC.audio.muted=true;else if(s.oppVoice!==false)VC.audio.muted=false}}catch(e){}}
++  try{if(typeof VC!=='undefined')for(const p of VC.peers.values())voiceAudio(p)}catch(e){}}
+ setInterval(sndTick,300);
+ const SND_ROWS=[['vol','🔊 الصوت العام','يرفع أو ينزّل كل الأصوات مرة وحدة'],['music','🎵 الموسيقى','ألحان العالم المفتوح'],['sfx','🎲 أصوات اللعبة والأزرار','الأحجار، الأكل، الفوز، ونقرة الأزرار'],
+-  ['amb','🌊 البحر والطبيعة','الموج، الهوا، النوارس، النار، والخطوات'],['car','🚗 السيارات','صوت مكينة الوانيت'],['opp','🎙️ صوت الخصم','صوته بالمايك وقت المباراة'],['crowd','👥 همهمة الناس','سوالف الناس حولك (مطفية من البداية)']];
++  ['amb','🌊 البحر والطبيعة','الموج، الهوا، النوارس، النار، والخطوات'],['car','🚗 السيارات','صوت مكينة الوانيت'],['opp','🎙️ أصوات اللاعبين','صوت اللاعبين بالعالم والمباراة'],['crowd','👥 همهمة الناس','سوالف الناس حولك (مطفية من البداية)']];
+ function sndHtml(){const s=S.settings;return'<div class="snd33">'+SND_ROWS.map(([k,t,d])=>{const v=s[k]==null?(k==='music'?.4:.7):s[k];
+   return'<div class="setrow"><label>'+t+'<small>'+d+'</small></label><div class="sv"><input type="range" min="0" max="1" step="0.05" data-snd="'+k+'" value="'+v+'"><b>'+Math.round(v*100)+'</b></div></div>'}).join('')+
+   '<div class="row" style="margin-top:8px"><button class="gbtn" data-snd-all="0">🔇 كتم الكل</button><button class="gbtn" data-snd-all="1">🔊 رجّع الافتراضي</button></div></div>'}
+@@ -5539,6 +5652,8 @@
+ (function(){const s=document.createElement('style');s.textContent='#lbChatU[hidden],#lbFriends .bd[hidden]{display:none!important}.rc-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.rs .cmsg{max-width:96%}.rs .rc-actions .sbtn{font-size:11px;min-height:36px}.rs .chlog{white-space:pre-wrap}.rs .sh-b{padding:12px}.rs .ssearch input{width:100%;min-width:0}#rcClanTag{max-width:100px}#lobby .l4-empty[role=button]{cursor:pointer;text-decoration:underline}';document.head.appendChild(s)})();
+ /* ================= end real community ================= */
+ 
++voiceInstall();
++
+ /* ---------------- boot ---------------- */
+ async function boot(){try{await Promise.race([document.fonts.load('700 40px "Reem Kufi"'),sleep(1500)])}catch(e){}
+   if(!isUnlocked(S.country))S.country='kw';ensureState();makeDust();buildWorld(S.country);spawnNPCs();rebuildPlayer();applyQuality();micUI();updateProfile();$('#fps').hidden=!S.settings.fps;$('#nameI').value=S.name;loop();if(window.DAMA_AUTH){INTRO.done=true;INTRO.on=false;const intro=$('#intro');if(intro)intro.remove();enterLobby(true)}else introReady()}
+--- a/admin.html
++++ b/admin.html
+@@ -312,7 +312,7 @@
+   $('#sx').onclick=closeSheet;$('#cAdd').onclick=()=>gift(1);$('#cSub').onclick=()=>gift(-1);$('#mBtn').onclick=toggleMute;$('#bBtn').onclick=toggleBan}
+ function closeSheet(){$('#sheet').classList.remove('on');cur=null}
+ $('#sheet').onclick=e=>{if(e.target.id==='sheet')closeSheet()};
+-async function setCtl(id,data){const user=auth.currentUser;if(!user)throw{code:'session'};await C.doc(id).set(Object.assign({by:user.uid,at:Date.now()},data),{merge:true});ctlCache[id]=Object.assign({},ctlCache[id]||{},data)}
++async function setCtl(id,data){const user=auth.currentUser;if(!user)throw{code:'session'};let next;await db.runTransaction(async tx=>{const ref=C.doc(id),snap=await tx.get(ref);next=Object.assign({},snap.exists?snap.data():{},data);tx.set(ref,Object.assign({by:user.uid,at:Date.now()},data),{merge:true});if('mute' in data||'ban' in data)tx.set(db.collection('voiceControls').doc(id),{ban:!!next.ban,mute:!!next.mute,at:firebase.firestore.FieldValue.serverTimestamp()})});ctlCache[id]=next}
+ async function gift(sign){const id=cur,input=$('#cAmt');if(!id||input.disabled)return;const a=Math.round(+$('#cAmt').value||0);if(a<=0){toast('اكتب الكمية');return}
+   const d=PD[id]||{},name=d.name||'اللاعب';if(sign<0&&!confirm('تخصم '+num(a)+' كوينز من '+name+'؟'))return;
+   input.disabled=true;try{await setCtl(id,{gifts:firebase.firestore.FieldValue.arrayUnion({id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),c:sign*a,at:Date.now()})});
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -67,6 +67,85 @@
+         && (request.resource.data.get('type','') == 'chat' ? chatReport(request.resource.data)
+           : request.resource.data.get('reason','other') in ['voice','name','cheat','other']);
+       allow read, update, delete: if isAdmin();
++    }
++
++    // Opt-in voice: at most eight real users per world channel and two per match.
++    // SDP/candidates are private to the two occupied seats, never a public room list.
++    function voiceSeat(kind, space, slot) { return /databases/$(database)/documents/$(kind)/$(space)/seats/$(slot); }
++    function voiceFresh(r) { return r.at > request.time - duration.value(90,'s'); }
++    function voiceSpace(kind, space) {
++      return kind == 'voiceWorlds' ? space.matches('^(kw|sa|bh|in|tr)_([1-9]|10)$')
++        : kind == 'voiceMatches' && space.matches('^[A-Z2-9]{4}$')
++          && request.auth.uid in [get(/databases/$(database)/documents/rooms/$(space)).data.host,
++                                  get(/databases/$(database)/documents/rooms/$(space)).data.guest]
++          && get(/databases/$(database)/documents/rooms/$(space)).data.state == 'play';
++    }
++    function voiceUnblocked(a,b) {
++      let x = /databases/$(database)/documents/socialBlocks/$(a);
++      let y = /databases/$(database)/documents/socialBlocks/$(b);
++      return (!exists(x) || !(b in get(x).data.uids)) && (!exists(y) || !(a in get(y).data.uids));
++    }
++    match /voiceControls/{uid} {
++      allow get: if registered() && notBanned();
++      allow create, update: if isAdmin() && request.resource.data.keys().hasOnly(['ban','mute','at'])
++        && request.resource.data.ban is bool && request.resource.data.mute is bool && request.resource.data.at == request.time;
++    }
++    match /voiceUsers/{uid} {
++      function shape(r) { return r.keys().hasOnly(['kind','space','slot','session'])
++        && r.kind in ['voiceWorlds','voiceMatches'] && r.space is string && r.slot.matches('^[0-7]$')
++        && r.session.matches('^[a-f0-9]{32}$'); }
++      function linked(r) { let s = getAfter(voiceSeat(r.kind,r.space,r.slot)).data; return s.uid == uid && s.session == r.session; }
++      function available(r) { let p = voiceSeat(r.kind,r.space,r.slot); return !exists(p) || get(p).data.session != r.session || !voiceFresh(get(p).data); }
++      allow get: if registered() && request.auth.uid == uid;
++      allow create: if registered() && notBanned() && request.auth.uid == uid && shape(request.resource.data) && linked(request.resource.data);
++      allow update: if registered() && notBanned() && request.auth.uid == uid && shape(request.resource.data)
++        && available(resource.data) && linked(request.resource.data);
++      allow delete: if registered() && request.auth.uid == uid
++        && (!existsAfter(voiceSeat(resource.data.kind,resource.data.space,resource.data.slot))
++          || getAfter(voiceSeat(resource.data.kind,resource.data.space,resource.data.slot)).data.session != resource.data.session);
++    }
++    match /{kind}/{space}/seats/{slot} {
++      function shape(r) {
++        return kind in ['voiceWorlds','voiceMatches'] && slot.matches(kind == 'voiceMatches' ? '^[01]$' : '^[0-7]$')
++          && r.keys().hasOnly(['uid','name','nameKey','session','matchId','at','mic'])
++          && r.uid == request.auth.uid && r.session.matches('^[a-f0-9]{32}$') && r.at == request.time
++          && r.mic is bool && (!r.mic || canSpeak())
++          && (kind == 'voiceWorlds' ? r.matchId == '' : r.matchId == get(/databases/$(database)/documents/rooms/$(space)).data.matchId
++              && r.uid == get(/databases/$(database)/documents/rooms/$(space)).data[slot == '0' ? 'host' : 'guest']);
++      }
++      function linked(r) { let m = getAfter(/databases/$(database)/documents/voiceUsers/$(request.auth.uid)).data;
++        return m.kind == kind && m.space == space && m.slot == slot && m.session == r.session; }
++      function claim(r) { return shape(r) && linked(r) && named(r.uid,r.name,r.nameKey) && r.mic == false; }
++      allow get: if registered() && notBanned() && voiceSpace(kind,space);
++      allow list: if registered() && notBanned() && voiceSpace(kind,space) && request.query.limit <= (kind == 'voiceMatches' ? 2 : 8);
++      allow create: if registered() && notBanned() && voiceSpace(kind,space) && claim(request.resource.data);
++      allow update: if registered() && notBanned() && voiceSpace(kind,space)
++        && ((resource.data.uid == request.auth.uid && voiceFresh(resource.data) && shape(request.resource.data) && linked(request.resource.data)
++              && changesOnly(['at','mic']))
++          || (!voiceFresh(resource.data) && claim(request.resource.data)));
++      allow delete: if registered() && kind in ['voiceWorlds','voiceMatches'] && resource.data.uid == request.auth.uid;
++
++      match /signals/{peerSlot} {
++        function pair() {
++          let a = get(voiceSeat(kind,space,slot)).data;
++          let b = get(voiceSeat(kind,space,peerSlot)).data;
++          return slot != peerSlot && a.uid != b.uid && voiceFresh(a) && voiceFresh(b)
++            && request.auth.uid in [a.uid,b.uid] && a.matchId == b.matchId && voiceUnblocked(a.uid,b.uid);
++        }
++        function valid(r) {
++          let a = get(voiceSeat(kind,space,slot)).data;
++          let b = get(voiceSeat(kind,space,peerSlot)).data;
++          return request.auth.uid == a.uid && r.keys().hasOnly(['fromSession','toSession','sdp','type','ice','at'])
++            && r.fromSession == a.session && r.toSession == b.session && r.at == request.time
++            && r.type == (slot < peerSlot ? 'offer' : 'answer') && r.sdp is string && r.sdp.size() <= 32768
++            && r.ice is list && r.ice.size() <= 32;
++        }
++        allow get: if registered() && notBanned() && voiceSpace(kind,space) && pair();
++        allow create, update: if registered() && notBanned() && voiceSpace(kind,space) && pair() && valid(request.resource.data);
++        // Fixed paths are overwritten on the next session; there is no unbounded candidate collection.
++        allow delete: if registered() && notBanned() && kind in ['voiceWorlds','voiceMatches']
++          && get(voiceSeat(kind,space,slot)).data.uid == request.auth.uid;
++      }
+     }
+ 
+     match /socialBlocks/{uid} {
+--- /dev/null
++++ b/dev/voice.js
+@@ -0,0 +1,150 @@
++/* ================= v37: real opt-in world and match voice ================= */
++// Firebase carries only authenticated signaling. Audio travels through WebRTC, never a save/document.
++const VC={gen:0,uid:null,kind:null,space:null,slot:null,session:null,matchId:'',local:null,peers:new Map(),rows:[],unsub:null,timer:0,beatBusy:false,lastBeat:0,busy:false,micBusy:false,micGen:0,error:'',channel:1,muted:new Set(),pc:null};
++const VC_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
++function voiceStamp(){return firebase.firestore.FieldValue.serverTimestamp()}
++function voiceTime(t){return t&&typeof t.toMillis==='function'?t.toMillis():0}
++function voiceId(){return Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('')}
++function voiceSeats(kind=VC.kind,space=VC.space){return ONL.db.collection(kind).doc(space).collection('seats')}
++function voiceCurrent(gen=VC.gen){return !!VC.uid&&VC.gen===gen&&rsUid()===VC.uid&&!document.hidden&&navigator.onLine!==false&&!window.DAMA_CONTEXT_LOST&&!CTL.ban}
++function voiceAllowed(){if(VC.kind==='voiceMatches')return !!(game&&game.online&&!game.over&&ONL.room&&ONL.room.state==='play'&&ONL.room.matchId===VC.matchId&&ONL.code===VC.space);return mode==='explore'&&!LOBBY.on&&VC.space===S.country+'_'+VC.channel}
++function voiceError(e){return ({'voice-full':'القناة مكتملة؛ اختَر قناة ثانية.','voice-session':'الصوت مفتوح بحسابك في جلسة ثانية.','voice-lost':'انتهى اتصال الصوت؛ اضغط إعادة الاتصال.','voice-name':'اختَر اسمك المسجّل أولًا.','permission-denied':'تعذّر السماح بالصوت؛ تأكد من الحساب وإعدادات الإدارة.','resource-exhausted':'خدمة الصوت وصلت حد الاستخدام مؤقتًا.','NotAllowedError':'اسمح للعبة باستخدام المايك من إعدادات المتصفح، ثم جرّب مرة ثانية.','NotFoundError':'ما لقينا مايك متصل بالجهاز.','NotReadableError':'المايك مشغول بتطبيق آخر؛ سكّره وجرّب.'})[e&&(e.code||e.name)]||'تعذّر اتصال الصوت؛ جرّب مرة ثانية.'}
++async function voiceClaim(kind,space,session,uid,name,nameKey,matchId){
++  const seats=voiceSeats(kind,space),own=ONL.db.collection('voiceUsers').doc(uid),count=kind==='voiceMatches'?2:8;
++  return ONL.db.runTransaction(async tx=>{
++    const mine=await tx.get(own),refs=Array.from({length:count},(_,i)=>seats.doc(String(i))),snaps=[];
++    for(const ref of refs)snaps.push(await tx.get(ref));
++    let oldRef=null,old=null;
++    if(mine.exists){const m=mine.data();oldRef=voiceSeats(m.kind,m.space).doc(m.slot);old=await tx.get(oldRef);
++      if(old.exists&&old.data().session===m.session&&voiceTime(old.data().at)>Date.now()-90000){if(m.session===session&&m.kind===kind&&m.space===space)return m.slot;throw{code:'voice-session'}}}
++    const index=kind==='voiceMatches'?(ONL.role==='host'?0:1):snaps.findIndex(s=>!s.exists||voiceTime(s.data().at)<=Date.now()-90000);
++    if(index<0)throw{code:'voice-full'};
++    const current=snaps[index];if(current.exists&&voiceTime(current.data().at)>Date.now()-90000)throw{code:'voice-session'};
++    tx.set(refs[index],{uid,name,nameKey,session,matchId,at:voiceStamp(),mic:false});
++    tx.set(own,{kind,space,slot:String(index),session});return String(index);
++  });
++}
++async function voiceRelease(kind,space,slot,session,uid){
++  if(slot==null||!uid)return;const ref=voiceSeats(kind,space).doc(slot),own=ONL.db.collection('voiceUsers').doc(uid);
++  try{await ONL.db.runTransaction(async tx=>{const s=await tx.get(ref),m=await tx.get(own);if(s.exists&&s.data().uid===uid&&s.data().session===session)tx.delete(ref);if(m.exists&&m.data().session===session)tx.delete(own)})}catch(e){}
++}
++async function voiceJoin(kind,space){
++  if(VC.busy||VC.uid)return;if(!requirePlayAccount())return;
++  if(!rsUid()||!ACC.synced||!ACC.key){toast('اختَر اسمك المسجّل أولًا');return}
++  if(document.hidden||navigator.onLine===false||CTL.ban||!window.RTCPeerConnection){toast('الصوت غير متاح في هذه الجلسة');return}
++  const gen=++VC.gen,uid=rsUid(),session=voiceId();Object.assign(VC,{busy:true,uid,kind,space,session,slot:null,matchId:kind==='voiceMatches'?ONL.room?.matchId||'':'',error:'',rows:[]});voiceUI();
++  try{if(VC.releasing)await VC.releasing;if(!voiceCurrent(gen)||!voiceAllowed()){if(VC.gen===gen)voiceStop();return}
++    let slot;try{slot=await voiceClaim(kind,space,session,uid,ACC.name,ACC.key,VC.matchId)}catch(e){if(!voiceCurrent(gen)||!['unavailable','deadline-exceeded','aborted'].includes(e.code))throw e;slot=await voiceClaim(kind,space,session,uid,ACC.name,ACC.key,VC.matchId)}
++    if(!voiceCurrent(gen)||!voiceAllowed()){await voiceRelease(kind,space,slot,session,uid);if(VC.gen===gen)voiceStop();return}
++    VC.slot=slot;VC.lastBeat=Date.now();VC.unsub=voiceSeats().limit(kind==='voiceMatches'?2:8).onSnapshot(s=>{
++      if(!voiceCurrent(gen)||s.metadata.hasPendingWrites)return;
++      VC.rows=s.docs.map(d=>({slot:d.id,...d.data()}));const me=VC.rows.find(r=>r.slot===slot&&r.uid===uid&&r.session===session);
++      if(!me){voiceFail({code:'voice-lost'});return}voiceSync();voiceUI();
++    },e=>{if(VC.gen===gen)voiceFail(e)});
++    VC.timer=setInterval(voiceTick,1000);
++  }catch(e){if(VC.gen===gen)voiceFail(e)}finally{if(VC.gen===gen){VC.busy=false;voiceUI()}}
++}
++function voicePeerCurrent(p){return voiceCurrent(p.gen)&&VC.peers.get(p.uid)===p&&!p.closed&&voiceAllowed()}
++function voicePeerClose(p){p.closed=true;clearTimeout(p.iceTimer);clearTimeout(p.deadline);if(p.unsub)p.unsub();if(p.controlUnsub)p.controlUnsub();try{p.pc.close()}catch(e){}if(p.audio){p.audio.pause();p.audio.srcObject=null;p.audio.remove()}if(p.stream)for(const t of p.stream.getTracks())t.stop()}
++function voicePeerError(p,e){if(!voicePeerCurrent(p))return;p.state='failed';p.error=voiceError(e);voicePeerClose(p);VC.peers.delete(p.uid);VC.error='تعذّر الصوت مع '+p.name+'؛ اضغط إعادة الاتصال.';VC.muted.add('failed:'+p.session);voiceUI()}
++async function voicePublish(p,changes){
++  if(!voicePeerCurrent(p))return;await ONL.db.runTransaction(async tx=>{
++    const snap=await tx.get(p.out);if(!voicePeerCurrent(p))return;
++    const old=snap.exists?snap.data():null,base=old&&old.fromSession===VC.session&&old.toSession===p.session?old:{fromSession:VC.session,toSession:p.session,sdp:'',type:p.offerer?'offer':'answer',ice:[]};
++    const next={...base,...changes,at:voiceStamp()};if(changes.ice)next.ice=[...new Set([...base.ice,...changes.ice])].slice(0,32);tx.set(p.out,next);
++  });
++}
++async function voiceFlushIce(p){if(!voicePeerCurrent(p)||!p.ice.length)return;const ice=p.ice.splice(0,32);try{await voicePublish(p,{ice})}catch(e){voicePeerError(p,e)}}
++async function voiceRemote(p,data){
++  if(!voicePeerCurrent(p)||!data||data.fromSession!==p.session||data.toSession!==VC.session)return;
++  p.latest=data;if(p.signaling)return;p.signaling=true;
++  try{while(voicePeerCurrent(p)&&p.latest){const r=p.latest;p.latest=null;
++    if(r.sdp&&!p.pc.remoteDescription){const type=p.offerer?'answer':'offer';if(r.type!==type)throw Error('signal type');await p.pc.setRemoteDescription({type,sdp:r.sdp});if(!voicePeerCurrent(p))return;
++      if(!p.offerer){p.sender=p.pc.getSenders().find(s=>s.track?.kind==='audio')||p.pc.getTransceivers().find(t=>t.receiver.track.kind==='audio')?.sender;if(!p.sender)throw Error('audio sender');
++        const tr=p.pc.getTransceivers().find(t=>t.sender===p.sender);if(tr)tr.direction='sendrecv';
++        await p.sender.replaceTrack(voiceTrack());if(!voicePeerCurrent(p))return;const a=await p.pc.createAnswer();if(!voicePeerCurrent(p))return;await p.pc.setLocalDescription(a);if(!voicePeerCurrent(p))return;await voicePublish(p,{sdp:a.sdp,type:'answer'})}}
++    if(p.pc.remoteDescription)for(const raw of r.ice||[]){if(!voicePeerCurrent(p))return;if(p.got.has(raw))continue;p.got.add(raw);try{await p.pc.addIceCandidate(JSON.parse(raw))}catch(e){if(!voicePeerCurrent(p))return;throw e}}
++  }}catch(e){voicePeerError(p,e)}finally{p.signaling=false}
++}
++function voiceTrack(){return !CTL.mute&&!CTL.ban&&VC.local?VC.local.getAudioTracks().find(t=>t.readyState!=='ended'&&t.enabled)||null:null}
++function voiceAudio(p){if(!p.audio)return;const blocked=rcBlocked(p.uid)||VC.muted.has(p.uid)||p.adminMuted||p.banned,volume=Math.max(0,Math.min(1,(S.settings.opp??1)*(S.settings.vol??1)));p.audio.volume=volume;p.audio.muted=blocked||volume<=0.001||(VC.kind==='voiceMatches'?!S.settings.oppVoice:false)}
++async function voicePeer(row){
++  const p={uid:row.uid,name:row.name,slot:row.slot,session:row.session,gen:VC.gen,offerer:+VC.slot<+row.slot,pc:null,sender:null,state:'connecting',ice:[],got:new Set(),closed:false,signaling:false,latest:null};
++  VC.peers.set(p.uid,p);
++  try{p.pc=new RTCPeerConnection({iceServers:VC_ICE,bundlePolicy:'max-bundle'});p.out=voiceSeats().doc(VC.slot).collection('signals').doc(row.slot);p.input=voiceSeats().doc(row.slot).collection('signals').doc(VC.slot);
++    p.pc.onicecandidate=e=>{if(!voicePeerCurrent(p)||!e.candidate||p.ice.length>=32)return;p.ice.push(JSON.stringify(e.candidate.toJSON()));clearTimeout(p.iceTimer);p.iceTimer=setTimeout(()=>voiceFlushIce(p),250)};
++    p.pc.ontrack=e=>{if(!voicePeerCurrent(p)){e.track.stop();return}if(p.audio)return;
++      p.stream=e.streams[0]||new MediaStream([e.track]);const a=p.audio=document.createElement('audio');a.autoplay=true;a.playsInline=true;a.setAttribute('playsinline','');a.srcObject=p.stream;document.body.appendChild(a);voiceAudio(p);a.play().catch(()=>{if(voicePeerCurrent(p)){p.needTap=true;voiceUI()}})};
++    p.pc.onconnectionstatechange=()=>{if(!voicePeerCurrent(p))return;const s=p.pc.connectionState;p.state=s;if(s==='connected')clearTimeout(p.deadline);if(s==='failed'){voicePeerError(p,{code:'voice-lost'});return}voiceUI()};
++    p.controlUnsub=ONL.db.collection('voiceControls').doc(p.uid).onSnapshot(s=>{if(!voicePeerCurrent(p))return;const c=s.exists?s.data():{};p.adminMuted=!!c.mute;p.banned=!!c.ban;voiceAudio(p);if(p.banned)voicePeerError(p,{code:'voice-lost'})},e=>voicePeerError(p,e));
++    p.unsub=p.input.onSnapshot(s=>{if(voicePeerCurrent(p)&&s.exists&&!s.metadata.hasPendingWrites)voiceRemote(p,s.data())},e=>voicePeerError(p,e));
++    p.deadline=setTimeout(()=>{if(voicePeerCurrent(p)&&p.pc.connectionState!=='connected')voicePeerError(p,{code:'voice-lost'})},25000);
++    if(p.offerer){const trans=p.pc.addTransceiver('audio',{direction:'sendrecv'});p.sender=trans.sender;await p.sender.replaceTrack(voiceTrack());if(!voicePeerCurrent(p))return;const o=await p.pc.createOffer();if(!voicePeerCurrent(p))return;await p.pc.setLocalDescription(o);if(!voicePeerCurrent(p))return;await voicePublish(p,{sdp:o.sdp,type:'offer'})}
++  }catch(e){voicePeerError(p,e)}
++}
++function voiceSync(){if(!voiceCurrent()||VC.slot==null)return;const rows=VC.rows.filter(r=>r.uid!==VC.uid&&r.session&&voiceTime(r.at)>Date.now()-90000&&r.matchId===VC.matchId&&!rcBlocked(r.uid));
++  for(const [uid,p]of VC.peers)if(!rows.some(r=>r.uid===uid&&r.session===p.session)){voicePeerClose(p);VC.peers.delete(uid)}
++  for(const r of rows)if(!VC.peers.has(r.uid)&&!VC.muted.has('failed:'+r.session))voicePeer(r);
++}
++async function voiceBeat(){if(VC.beatBusy||!voiceCurrent()||VC.slot==null)return;const gen=VC.gen,ref=voiceSeats().doc(VC.slot),session=VC.session;VC.beatBusy=true;
++  try{await ONL.db.runTransaction(async tx=>{const s=await tx.get(ref);if(!voiceCurrent(gen))return;if(!s.exists||s.data().session!==session)throw{code:'voice-lost'};tx.update(ref,{at:voiceStamp(),mic:!!voiceTrack()})});if(voiceCurrent(gen))VC.lastBeat=Date.now()}
++  catch(e){if(voiceCurrent(gen))voiceFail(e)}finally{if(VC.gen===gen)VC.beatBusy=false}
++}
++function voiceTick(){if(!voiceCurrent()||!voiceAllowed()){voiceStop();return}if(CTL.mute&&VC.local)voiceMicOff();if(Date.now()-VC.lastBeat>70000){voiceFail({code:'voice-lost'});return}if(Date.now()-VC.lastBeat>=30000)voiceBeat();voiceSync();for(const p of VC.peers.values())voiceAudio(p);voiceUI()}
++function voiceMicOff(){VC.micGen++;VC.micBusy=false;const stream=VC.local;VC.local=null;if(stream)for(const t of stream.getTracks()){t.enabled=false;t.stop()}for(const p of VC.peers.values())if(p.sender)p.sender.replaceTrack(null).catch(e=>voicePeerError(p,e));S.settings.matchVoice=false;S.settings.mic=false;voiceUI()}
++async function voiceMic(){
++  if(voiceTrack()){voiceMicOff();voiceBeat();return}if(VC.micBusy){voiceMicOff();return}if(!voiceCurrent()||VC.slot==null)return;if(CTL.mute){toast('المايك مقفول عليك من الإدارة');return}
++  const gen=VC.gen,micGen=++VC.micGen;VC.micBusy=true;voiceUI();
++  try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
++    // Disable before the first await: permission may arrive after leaving, muting or switching accounts.
++    for(const t of stream.getTracks())t.enabled=false;
++    if(!voiceCurrent(gen)||!voiceAllowed()||VC.micGen!==micGen||CTL.mute){for(const t of stream.getTracks())t.stop();return}
++    VC.local=stream;const track=stream.getAudioTracks()[0];if(!track)throw{ name:'NotFoundError'};track.enabled=true;track.onended=()=>{if(VC.local===stream){voiceMicOff();voiceBeat()}};
++    for(const p of VC.peers.values()){if(!voiceCurrent(gen)||VC.micGen!==micGen)break;if(p.sender)await p.sender.replaceTrack(track)}
++    if(!voiceCurrent(gen)||VC.micGen!==micGen||CTL.mute){for(const t of stream.getTracks())t.stop();return}
++    S.settings.matchVoice=VC.kind==='voiceMatches';S.settings.mic=VC.kind==='voiceWorlds';VC.error='';await voiceBeat();
++  }catch(e){if(VC.gen===gen&&VC.micGen===micGen){voiceMicOff();VC.error=voiceError(e);toast(VC.error)}}finally{if(VC.gen===gen&&VC.micGen===micGen)VC.micBusy=false;voiceUI()}
++}
++function voiceStop(message=''){
++  const {kind,space,slot,session,uid}=VC;VC.gen++;clearInterval(VC.timer);if(VC.unsub)VC.unsub();VC.unsub=null;voiceMicOff();for(const p of VC.peers.values())voicePeerClose(p);VC.peers.clear();
++  Object.assign(VC,{uid:null,kind:null,space:null,slot:null,session:null,matchId:'',rows:[],busy:false,beatBusy:false,lastBeat:0,error:message,timer:0});VC.muted.clear();voiceUI();if(uid)VC.releasing=voiceRelease(kind,space,slot,session,uid);
++}
++function voiceFail(e){const message=voiceError(e);voiceStop(message);toast(message)}
++function voiceStatus(){if(VC.busy)return'جاري الاتصال بالصوت…';if(VC.error)return VC.error;if(!VC.uid)return'الصوت غير متصل';const connected=[...VC.peers.values()].filter(p=>p.state==='connected').length;if(connected)return'الصوت متصل مع '+connected+' '+(connected===1?'لاعب':'لاعبين');return VC.peers.size?'جاري توصيل اللاعبين…':'أنت وحدك في قناة الصوت';}
++function voiceUI(){
++  const track=voiceTrack(),modal=$('#realVoiceStatus'),key=JSON.stringify([VC.kind,!!track,VC.micBusy,VC.slot,CTL.mute,S.settings.oppVoice,voiceStatus(),VC.rows.map(r=>[r.uid,r.session,r.mic]),[...VC.peers.values()].map(p=>[p.uid,p.state,p.needTap,p.adminMuted]),[...VC.muted]]);
++  if(VC.uiKey===key&&VC.uiModal===modal)return;VC.uiKey=key;VC.uiModal=modal;
++  const b=$('#micB');if(b){b.classList.toggle('on',VC.kind==='voiceWorlds'&&!!track);b.innerHTML=ic(VC.kind==='voiceWorlds'&&track?'mic':'micoff');b.setAttribute('aria-label','صوت العالم')}
++  const hear=$('#hearT');if(hear)hear.textContent=VC.kind==='voiceWorlds'?voiceStatus():'صوت العالم مغلق';
++  const mic=$('#mMic');if(mic){const on=VC.kind==='voiceMatches'&&!!track;mic.classList.toggle('on',on);mic.innerHTML=ic(on?'mic':'micoff')+'<span>'+(VC.micBusy?'بانتظار إذن المايك':on?'مايكك مفتوح':VC.kind==='voiceMatches'?'افتح المايك':'توصيل صوت المباراة')+'</span>'}
++  const mute=$('#mMute');if(mute){mute.classList.toggle('on',S.settings.oppVoice);mute.innerHTML=ic(S.settings.oppVoice?'speaker':'speakeroff')+'<span>'+(S.settings.oppVoice?'صوت الخصم مفعّل':'الخصم مكتوم')+'</span>'}
++  const status=modal;if(status)status.textContent=voiceStatus()+([...VC.peers.values()].some(p=>p.needTap)?' · اضغط الشاشة لتفعيل السماع':'');const toggle=$('#realVoiceMic');if(toggle){toggle.textContent=VC.micBusy?'إلغاء طلب المايك':track?'إغلاق المايك':'فتح المايك';toggle.disabled=!VC.uid||VC.slot==null||CTL.mute}
++  const list=$('#realVoicePlayers');if(list){const rows=VC.rows.filter(r=>voiceTime(r.at)>Date.now()-90000);list.innerHTML=rows.map(r=>'<div class="rv-player"><span>'+esc(r.name)+(r.uid===VC.uid?' (أنت)':'')+'</span><small>'+esc(r.uid===VC.uid?(track?'مايك مفتوح':'مايك مغلق'):VC.peers.get(r.uid)?.state==='connected'?'متصل':'غير متصل')+'</small>'+(r.uid===VC.uid?'':'<button class="sbtn" data-a="vcmute" data-uid="'+esc(r.uid)+'">'+(VC.muted.has(r.uid)?'سماع':'كتم')+'</button><button class="sbtn" data-a="vcreport" data-uid="'+esc(r.uid)+'">بلّغ</button>')+'</div>').join('')||'<p>ما فيه لاعبين بقناتك حاليًا.</p>'}
++}
++function voiceOpen(){
++  const match=!!(game&&game.online&&!game.over&&ONL.ref&&ONL.room?.state==='play'),title=match?'صوت المباراة':'صوت العالم';
++  onlDlg('<h3>'+title+'</h3><p id="realVoiceStatus"></p>'+(match?'':'<p>يسمعك المشاركون بنفس الدولة والقناة، بحد أقصى 8 لاعبين. الصوت مو مرتبط بالمسافة.</p><label>القناة <select id="voiceChannel">'+Array.from({length:10},(_,i)=>'<option value="'+(i+1)+'"'+(VC.channel===i+1?' selected':'')+'>'+(i+1)+'</option>').join('')+'</select></label>')+'<div id="realVoicePlayers"></div><div class="row"><button class="gbtn" data-a="vcjoin">'+(VC.uid?'إعادة الاتصال':'دخول للاستماع')+'</button><button class="gbtn" id="realVoiceMic" data-a="vcmic">فتح المايك</button><button class="gbtn" data-a="vcleave">مغادرة الصوت</button><button class="gbtn" data-a="vcclose">إغلاق النافذة</button></div><p class="muted">المايك يبدأ مغلقًا. عند مغادرة العالم أو إخفاء اللعبة يتوقف الصوت.</p>',{
++    vcjoin:async()=>{const channel=Number($('#voiceChannel')?.value||VC.channel);if(VC.uid||VC.busy){const old={kind:VC.kind,space:VC.space,slot:VC.slot,session:VC.session,uid:VC.uid};voiceStop();await voiceRelease(old.kind,old.space,old.slot,old.session,old.uid)}VC.channel=Math.max(1,Math.min(10,channel));if(match)await vcStart();else if(mode==='explore'&&!LOBBY.on)await voiceJoin('voiceWorlds',S.country+'_'+VC.channel);else toast('ادخل العالم عشان تستخدم صوته');voiceUI()},
++    vcmic:voiceMic,vcleave:()=>voiceStop(),vcclose:closeLayer,
++    vcmute:b=>{const uid=b.dataset.uid;if(VC.muted.has(uid))VC.muted.delete(uid);else VC.muted.add(uid);const p=VC.peers.get(uid);if(p)voiceAudio(p);voiceUI()},
++    vcreport:async b=>{const row=VC.rows.find(r=>r.uid===b.dataset.uid);if(!row||!VC.uid)return;try{await ONL.db.collection('reports').add({by:VC.uid,byName:ACC.name,target:row.uid,targetName:row.name,reason:'voice',note:'بلاغ من قناة الصوت '+VC.space,at:Date.now(),createdAt:voiceStamp(),status:'open'});toast('وصل البلاغ للإدارة')}catch(e){toast(voiceError(e))}}
++  });voiceUI();
++}
++async function vcStart(){if(!game||!game.online||game.over||!ONL.code||ONL.room?.state!=='play')return;if(VC.uid&&VC.kind==='voiceMatches'&&VC.space===ONL.code)return;if(VC.uid){const old={...VC};voiceStop();await voiceRelease(old.kind,old.space,old.slot,old.session,old.uid)}await voiceJoin('voiceMatches',ONL.code)}
++function vcStop(){voiceStop()}
++function vcSignal(){} // v2 room signaling remains readable for old saved games; v37 uses authenticated seats.
++function voiceInstall(){
++  S.settings.mic=false;S.settings.matchVoice=false;micUI=voiceUI;updateHear=function(){const el=$('#hearT'),text=VC.kind==='voiceWorlds'?voiceStatus():'صوت العالم مغلق';if(el&&el.textContent!==text)el.textContent=text};updMatchBtns=voiceUI;$('#micB').onclick=voiceOpen;
++  $('#mMic').onclick=async()=>{if(!game||!game.online){toast('الصوت متاح مع لاعب حقيقي فقط');return}if(VC.kind!=='voiceMatches'){await vcStart();voiceOpen();return}await voiceMic()};
++  $('#mMute').onclick=()=>{if(!game||!game.online){toast('ما فيه خصم بشري بهالمباراة');return}S.settings.oppVoice=!S.settings.oppVoice;persist();for(const p of VC.peers.values())voiceAudio(p);voiceUI()};
++  const matchBar=$('#mLeft');if(matchBar){const btn=document.createElement('button');btn.className='mbtn glass';btn.id='voiceDetails';btn.textContent='حالة الصوت';btn.onclick=voiceOpen;matchBar.appendChild(btn)}
++  const previousMute=ctlApplyMute;ctlApplyMute=function(){previousMute();if(CTL.ban)voiceStop();else if(CTL.mute){voiceMicOff();voiceBeat()}};
++  const previousStop=rsStop;rsStop=function(clear){voiceStop();return previousStop.apply(this,arguments)};
++  const previousLobby=enterLobby;enterLobby=function(){voiceStop();return previousLobby.apply(this,arguments)};
++  const previousTravel=travelTo;travelTo=async function(){voiceStop();return previousTravel.apply(this,arguments)};
++  const previousBegin=beginMatch;beginMatch=function(){if(!requirePlayAccount())return;voiceStop();return previousBegin.apply(this,arguments)};
++  document.addEventListener('visibilitychange',()=>{if(document.hidden)voiceStop('الصوت توقف بالخلفية؛ أعد الاتصال عند الرجوع.')});addEventListener('offline',()=>voiceStop('انقطع الإنترنت؛ أعد الاتصال بالصوت بعد رجوعه.'));addEventListener('pagehide',()=>voiceStop());
++  document.addEventListener('pointerdown',()=>{for(const p of VC.peers.values())if(p.needTap&&p.audio)p.audio.play().then(()=>{p.needTap=false;voiceUI()}).catch(()=>{})},true);
++  const style=document.createElement('style');style.textContent='.rv-player{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #c9933f44}.rv-player span{flex:1}.rv-player button{min-height:38px}.onl #voiceChannel{font:inherit;padding:8px;background:#142034;color:#ffe3a6}#realVoicePlayers{max-height:28dvh;overflow:auto}.onl:has(#realVoiceStatus) .dlg{max-height:calc(100dvh - 24px - env(safe-area-inset-bottom));overflow:auto}.onl #realVoiceStatus{font-weight:700;min-height:1.4em}';document.head.appendChild(style);voiceUI();
++}
++/* ================= end real voice ================= */
+--- /dev/null
++++ b/dev/VOICE_RELEASE.md
+@@ -0,0 +1,28 @@
++# Real world and match voice — 2026-10-13
++
++## Shipped behavior
++
++- World microphone opens a real voice panel. Players explicitly join the same country and channel (1–10). Each channel has eight authenticated seats. This is channel audio, **not positional/proximity audio**; NPC motion and world rendering are unchanged.
++- An online match has a private two-seat voice channel bound to its room and match ID. Only the current host and guest may join it. Computer matches have no human microphone action.
++- Joining starts in listening mode. Only an explicit microphone press calls `getUserMedia`. Saved settings cannot silently reopen capture. Muting stops hardware tracks and removes them from all senders; reopening uses `replaceTrack` without renegotiation.
++- World and match voice share one owned session. Leaving, changing accounts/countries, hiding the game, losing connectivity or the WebGL context closes capture, connections, audio elements and listeners. Returning requires an explicit reconnect. A server-timed 90-second lease also expires abandoned seats.
++- UI distinguishes waiting, connecting, connected, failed and permission-denied states; it never treats a microphone toggle as proof of a remote connection. It has participant names, local peer mute, report, leave and reconnect controls. Existing master/player volume controls apply to all remote streams.
++- Owner mute/ban changes atomically update private moderation and a public boolean-only voice control document. Other peers suppress the affected user's playback immediately. Private moderation reasons, gifts, saves and account data remain private.
++- Blocked pairs cannot exchange SDP/ICE. Only the owner of a fresh occupied seat writes that seat's outgoing signaling; only its two parties can read it. Reserved names, fixed capacities, match roles, session IDs, timestamps, query bounds and payload bounds are checked in Firestore rules.
++- Signaling paths are fixed per pair and overwritten for new sessions; audio is not recorded or uploaded to Firebase. Existing room/move/save/chat schemas and legacy voice rules remain intact.
++
++## Cost and network scope
++
++Uses the existing Firebase Spark project, direct WebRTC and existing STUN configuration. No billing, TURN subscription, relay server or Cloud Function is enabled. Firebase's existing free quotas still apply. Networks that block direct peer connectivity can fail; the UI exposes this and permits retry rather than claiming the other person can hear.
++
++## Verification
++
++- Existing 217 frontend checks remain, plus 19 voice checks for opt-in capture, denied/late permissions, account changes, mute, cleanup, real state labels, transceiver negotiation and ICE ordering.
++- Existing 160 Firestore checks remain, plus 24 voice rules/integration checks using independent Firebase SDK clients and the shipped claim/release functions.
++- `dev/firebase/test_voice_media.cjs` uses the shipped voice engine with real native libwebrtc peer connections, Firebase emulator signaling, synthetic PCM sources and decoded audio sinks. It tests world bidirectional media, a three-player mesh, silence on microphone-off, reopen, owner mute, cleanup and private match media. It is a required CI suite, not a substitute for browser acceptance.
++- The local execution environment produced **zero ICE candidates even in a minimal standalone native WebRTC test**; media could not connect there. Record the CI result before release. Do not count that local attempt as passed.
++- Two separately signed-in physical browsers/devices, Safari microphone permission/autoplay, different mobile networks, speaker echo and the 3D game UI still require manual acceptance. Previous cloud Chrome could not initialize WebGL. No production players or messages are fabricated for testing.
++
++## Deployment
++
++Publish the complete root `firestore.rules`, then deploy the game and owner panel from the same commit. Reload both players after updating, because old tabs use the earlier match voice protocol. Native `@roamhq/wrtc` is a test-only dependency; the web game downloads no new RTC library.
+--- /dev/null
++++ b/dev/tests/test_voice.cjs
+@@ -0,0 +1,37 @@
++const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
++const root=path.resolve(__dirname,'../..'),source=fs.readFileSync(root+'/dev/voice.js','utf8'),html=fs.readFileSync(root+'/index.html','utf8');
++const settle=async()=>{for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r))};
++function defer(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}}
++function media(){const t={kind:'audio',readyState:'live',enabled:true,stopped:0,stop(){this.stopped++;this.readyState='ended'}};return{track:t,getTracks:()=>[t],getAudioTracks:()=>[t]}}
++function context(){const timers=new Map(),notices=[];let tid=0,calls=0;const wait=defer(),user={uid:'alice'},c=vm.createContext({console,Date,Math,JSON,Set,Map,Array,Object,Number,String,Promise,Uint8Array,crypto:require('node:crypto').webcrypto,
++  setTimeout:(f,ms)=>{timers.set(++tid,{f,ms});return tid},clearTimeout:id=>timers.delete(id),setInterval:(f,ms)=>{timers.set(++tid,{f,ms});return tid},clearInterval:id=>timers.delete(id),
++  window:{RTCPeerConnection:function(){}},document:{hidden:false},navigator:{onLine:true,mediaDevices:{getUserMedia(){calls++;return wait.promise}}},
++  ONL:{code:'ABCD',room:{state:'play',matchId:'m1'},role:'host'},ACC:{synced:true,key:'alice',name:'Alice'},CTL:{mute:false,ban:false},S:{country:'kw',settings:{mic:true,matchVoice:true,oppVoice:true}},game:{online:{},over:false},mode:'explore',LOBBY:{on:false},
++  rsUid:()=>user.uid,rcBlocked:()=>false,requirePlayAccount:()=>true,toast:t=>notices.push(t),$ :()=>null,ic:()=>'',persist(){},esc:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'),
++  firebase:{firestore:{FieldValue:{serverTimestamp:()=>123}}}});
++  vm.runInContext(source,c);const state=vm.runInContext('VC',c);Object.assign(state,{uid:'alice',kind:'voiceWorlds',space:'kw_1',slot:'0',session:'a'.repeat(32),gen:1,lastBeat:Date.now()});c.voiceUI=()=>{};c.voiceBeat=async()=>{};c.voiceRelease=async()=>{};
++  return{c,state,wait,user,timers,notices,calls:()=>calls};
++}
++let passed=0;async function test(name,f){await f();passed++;console.log('PASS',name)}
++(async()=>{
++await test('voice source is embedded exactly and all shipped scripts parse',()=>{assert(html.includes(source.trim()));new vm.Script(source);new vm.Script(html.match(/<script id="damaGameSource" type="application\/x-dama-game">([\s\S]*?)<\/script>/)[1])});
++await test('match joins receive-only; saved microphone preference never calls getUserMedia',async()=>{const w=context();w.state.uid=null;let joined;w.c.voiceJoin=async(...a)=>{joined=a};await w.c.vcStart();assert.deepEqual(joined,['voiceMatches','ABCD']);assert.equal(w.calls(),0)});
++await test('permission after leaving stops every captured track and never sends',async()=>{const w=context(),s=media(),p=w.c.voiceMic();w.c.voiceStop();w.wait.resolve(s);await p;assert.equal(s.track.stopped,1);assert.equal(s.track.enabled,false);assert.equal(w.state.local,null)});
++await test('permission after changing accounts cannot attach to the new user',async()=>{const w=context(),s=media(),p=w.c.voiceMic();w.user.uid='bob';w.wait.resolve(s);await p;assert.equal(s.track.stopped,1);assert.equal(w.state.local,null)});
++await test('permission after admin mute cannot capture or send audio',async()=>{const w=context(),s=media(),p=w.c.voiceMic();w.c.CTL.mute=true;w.wait.resolve(s);await p;assert.equal(s.track.stopped,1);assert.equal(w.state.local,null)});
++await test('second press cancels a pending permission request',async()=>{const w=context(),s=media(),p=w.c.voiceMic();await w.c.voiceMic();w.wait.resolve(s);await p;assert.equal(s.track.stopped,1);assert.equal(w.state.micBusy,false);assert.equal(w.state.local,null)});
++await test('permission denial leaves mic closed with a recoverable visible error',async()=>{const w=context(),p=w.c.voiceMic();w.wait.reject({name:'NotAllowedError'});await p;assert.equal(w.state.local,null);assert.equal(w.state.micBusy,false);assert(w.state.error.includes('اسمح'));assert.equal(w.c.S.settings.mic,false)});
++await test('explicit permission attaches the audio track to every connected sender',async()=>{const w=context(),s=media(),tracks=[];w.state.peers.set('bob',{sender:{replaceTrack:async t=>tracks.push(t)}});const p=w.c.voiceMic();w.wait.resolve(s);await p;assert.equal(tracks[0],s.track);assert.equal(w.state.local,s);assert.equal(w.c.S.settings.mic,true);assert.equal(w.state.micBusy,false)});
++await test('closing mic stops hardware tracks and removes them from senders',async()=>{const w=context(),s=media(),tracks=[];w.state.local=s;w.state.peers.set('bob',{sender:{replaceTrack:async t=>tracks.push(t)}});w.c.voiceMicOff();assert.equal(s.track.stopped,1);assert.equal(s.track.enabled,false);assert.equal(tracks[0],null);assert.equal(w.state.local,null)});
++await test('stale incoming SDP never changes a replacement voice session',async()=>{const w=context();let touched=0;const p={uid:'bob',gen:1,session:'b',pc:{setRemoteDescription:async()=>touched++}};w.state.peers.set('bob',p);await w.c.voiceRemote(p,{fromSession:'old',toSession:w.state.session,sdp:'old',ice:[]});assert.equal(touched,0);w.state.gen++;await w.c.voiceRemote(p,{fromSession:'b',toSession:w.state.session,sdp:'new',ice:[]});assert.equal(touched,0)});
++await test('answerer reuses the offered transceiver and explicitly makes it sendrecv',async()=>{const w=context(),s=media(),sent=[],sender={replaceTrack:async t=>sent.push(t)},tr={receiver:{track:{kind:'audio'}},sender,direction:'recvonly'};w.state.local=s;const pc={remoteDescription:null,getSenders:()=>[sender],getTransceivers:()=>[tr],async setRemoteDescription(d){this.remoteDescription=d},createAnswer:async()=>({sdp:'answer'}),setLocalDescription:async()=>{},addIceCandidate:async()=>{}};const p={uid:'bob',name:'Bob',gen:1,session:'b',offerer:false,pc,got:new Set()};w.state.peers.set('bob',p);let published;w.c.voicePublish=async(p,d)=>published=d;await w.c.voiceRemote(p,{fromSession:'b',toSession:w.state.session,sdp:'offer',type:'offer',ice:[]});assert.equal(tr.direction,'sendrecv');assert.equal(sent[0],s.track);assert.equal(published.type,'answer')});
++await test('ICE received before SDP is applied with the later cumulative offer exactly once',async()=>{const w=context(),ice=[],sender={replaceTrack:async()=>{}},pc={remoteDescription:null,getSenders:()=>[],getTransceivers:()=>[{receiver:{track:{kind:'audio'}},sender}],async setRemoteDescription(d){this.remoteDescription=d},createAnswer:async()=>({sdp:'answer'}),setLocalDescription:async()=>{},addIceCandidate:async x=>ice.push(x)};const p={uid:'bob',gen:1,session:'b',offerer:false,pc,got:new Set()};w.state.peers.set('bob',p);w.c.voicePublish=async()=>{};const data={fromSession:'b',toSession:w.state.session,sdp:'',type:'offer',ice:['{"candidate":"one"}']};await w.c.voiceRemote(p,data);assert.equal(ice.length,0);data.sdp='offer';await w.c.voiceRemote(p,data);await w.c.voiceRemote(p,data);assert.equal(ice.length,1)});
++await test('block, peer mute, admin mute and match speaker setting all suppress playback',()=>{const w=context(),p={uid:'bob',audio:{muted:false}};w.state.muted.add('bob');w.c.voiceAudio(p);assert(p.audio.muted);w.state.muted.clear();p.adminMuted=true;w.c.voiceAudio(p);assert(p.audio.muted);p.adminMuted=false;w.c.rcBlocked=()=>true;w.c.voiceAudio(p);assert(p.audio.muted);w.c.rcBlocked=()=>false;w.state.kind='voiceMatches';w.c.S.settings.oppVoice=false;w.c.voiceAudio(p);assert(p.audio.muted)});
++await test('expired/blocked peers are closed; NPCs cannot become peers',()=>{const w=context();let closed=0;w.c.voicePeerClose=()=>closed++;w.state.peers.set('bob',{uid:'bob',session:'b'});w.state.rows=[{uid:'bob',session:'b',at:{toMillis:()=>Date.now()-95000}}];w.c.voiceSync();assert.equal(closed,1);assert.equal(w.state.peers.size,0)});
++await test('world microphone stops when entering match and cannot cross countries',()=>{const w=context(),s=media();w.state.local=s;w.c.mode='match';w.c.voiceTick();assert.equal(s.track.stopped,1);assert.equal(w.state.uid,null);const x=context();x.c.S.country='in';assert.equal(x.c.voiceAllowed(),false)});
++await test('background, offline and WebGL context loss invalidate all voice callbacks',()=>{for(const which of ['hidden','offline','gpu']){const w=context();if(which==='hidden')w.c.document.hidden=true;if(which==='offline')w.c.navigator.onLine=false;if(which==='gpu')w.c.window.DAMA_CONTEXT_LOST=true;assert.equal(w.c.voiceCurrent(),false);w.c.voiceTick();assert.equal(w.state.uid,null)}});
++await test('world/match exit removes listeners, audio elements and peer connections',()=>{const w=context();let n=0;const stream=media();w.state.local=media();w.state.unsub=()=>n++;w.state.peers.set('bob',{pc:{close:()=>n++},unsub:()=>n++,controlUnsub:()=>n++,audio:{pause:()=>n++,remove:()=>n++,srcObject:stream},stream});w.c.voiceStop();assert.equal(n,6);assert.equal(stream.track.stopped,1);assert.equal(w.state.peers.size,0);assert.equal(w.state.uid,null)});
++await test('UI reports connection state, not merely an open microphone',()=>{const w=context();w.state.local=media();assert.equal(w.c.voiceStatus(),'أنت وحدك في قناة الصوت');w.state.peers.set('bob',{state:'connecting'});assert(w.c.voiceStatus().includes('جاري'));w.state.peers.get('bob').state='connected';assert(w.c.voiceStatus().includes('متصل مع 1'))});
++await test('one pending heartbeat cannot multiply database writes',async()=>{const w=context();let writes=0;w.state.beatBusy=true;w.c.ONL.db={collection(){writes++}};vm.runInContext(source.match(/async function voiceBeat\(\)[\s\S]*?\n}/)[0],w.c);await w.c.voiceBeat();assert.equal(writes,0)});
++console.log('Real voice client: '+passed+' passed');
++})().catch(e=>{console.error(e);process.exitCode=1});
+--- a/dev/tests/test_reliability.cjs
++++ b/dev/tests/test_reliability.cjs
+@@ -51,9 +51,8 @@
+  await test('DW13 human rating is independent of the NPC body',()=>{const values=[];for(const lvl of [1,40]){const c=ctx({S:{rating:1200,stats:{games:0,wins:0,crowd:0,bestRating:1200}},game:{npc:{lvl},online:{opponentRating:1600,selfRating:1200}},specs:[],track(){},checkAch(){},tierOf:()=>[0,'tier','#fff'],npcRating:n=>n.lvl*100});add(c,['onMatchEnd']);c.onMatchEnd(1);values.push(c.S.rating)}assert.equal(values[0],values[1]);assert.equal(values[0],1229)});
+  await test('DW13 repeated confirmed result grants rewards once in one persisted state',()=>{let grants=0,saves=0;const c=ctx({S:{coins:0},ONL:{user:{uid:'h'},room:{moves:[]}},game:{online:{id:'m'},plies:0,over:false},onlForget(){},persist(){saves++;assert(c.S.onlineResults.m);assert.equal(c.S.coins,50)},_endGame25(){grants++;c.S.coins+=50;c.persist();c.game.over=true}});add(c,['onlApplyResult','saveBatch']);c.onlApplyResult({winner:'h'});c.onlApplyResult({winner:'h'});c.game.over=false;c.onlApplyResult({winner:'h'});assert.equal(grants,1);assert.equal(saves,1)});
+  await test('DW14 quick messages use the room, deliver both directions and deduplicate',async()=>{const db=database({'rooms/ABCD':room()}),h=online(db),g=online(db,'g'),received=[];for(const c of [h,g]){c.game={online:{}};c.meSay=()=>{};c.oppSay=t=>received.push(t)}await h.onlChat(1);g.onlReceiveChat(db.docs.get('rooms/ABCD'));g.onlReceiveChat(db.docs.get('rooms/ABCD'));await g.onlChat(2);h.onlReceiveChat(db.docs.get('rooms/ABCD'));assert.deepEqual(received,['nice','thinking']);assert.equal(db.docs.get('rooms/ABCD').messages.length,2)});
+- function voice(){const wait=defer(),tracks=[{enabled:true,stops:0,stop(){this.stops++}}],stream={getTracks:()=>tracks,getAudioTracks:()=>tracks},pcs=[];const out={setAttribute(){},play:async()=>{},pause(){},remove(){}};const c=ctx({VC:{},ONL:{ref:{},room:{voiceEpoch:1,state:'play'},role:'host'},game:{online:{},over:false},S:{settings:{matchVoice:true,oppVoice:true}},CTL:{mute:false},VC_ICE:[],navigator:{mediaDevices:{getUserMedia:()=>wait.promise}},document:{createElement:()=>out,body:{appendChild(){}}},RTCPeerConnection:function(){this.addTrack=()=>{this.added=(this.added||0)+1};this.close=()=>{};this.addTransceiver=()=>{};this.createOffer=async()=>({sdp:'offer'});this.setLocalDescription=async()=>{};pcs.push(this)},vcPublish:async()=>{},vcSignal:async()=>{}});add(c,['vcStart','vcStop']);return{c,wait,tracks,stream,pcs}}
+- await test('DW15 delayed microphone permission after leaving stops every track',async()=>{const w=voice(),p=w.c.vcStart();w.c.vcStop();w.wait.resolve(w.stream);await p;assert.equal(w.tracks[0].stops,1);assert.equal(w.c.VC.local,null);assert.equal(w.pcs[0].added,undefined)});
+- await test('DW15 old permission cannot attach to a new match; owner mute applies immediately',async()=>{const w=voice(),p=w.c.vcStart();w.c.vcStop();w.c.ONL.ref={};w.c.VC.pc={newSession:true};w.wait.resolve(w.stream);await p;assert.equal(w.tracks[0].stops,1);assert(w.c.VC.pc.newSession);const m=voice();m.c.CTL.mute=true;const q=m.c.vcStart();m.wait.resolve(m.stream);await q;assert.equal(m.tracks[0].enabled,false)});
++ await test('DW15 voice starts listening without ever opening the microphone automatically',async()=>{const c=ctx({game:{online:{},over:false},ONL:{code:'ABCD',room:{state:'play'}},VC:{uid:null},voiceJoin:async(kind,space)=>{c.joined=[kind,space]}});add(c,['vcStart']);await c.vcStart();assert.deepEqual(c.joined,['voiceMatches','ABCD'])});
++ await test('DW15 microphone race, moderation and cleanup coverage runs against the v37 module',()=>{const voice=fs.readFileSync(path.join(root,'dev/voice.js'),'utf8');assert.equal(segment('/* ================= v37:','/* ================= end real voice ================= */').trim(),voice.slice(0,voice.indexOf('/* ================= end real voice ================= */')).trim());assert(fs.existsSync(path.join(root,'dev/tests/test_voice.cjs')))});
+  await test('DW16 ten room join/leave cycles leave no listener and ignore old callbacks',()=>{const db=database({'rooms/ABCD':room()}),c=online(db);let staleEffects=0;c.onlBeat=()=>{};c.onlDisconnected=()=>staleEffects++;add(c,['onlListen','onlClose']);for(let i=0;i<10;i++){c.ONL.ref=db.ref('rooms/ABCD');c.onlListen(c.ONL.ref);const old=[...db.listeners][0];assert.equal(db.listeners.size,1);c.onlClose(false);old.ok({exists:false});assert.equal(db.listeners.size,0)}assert.equal(staleEffects,0)});
+  await test('DW17 closing and reopening during chest animation grants one reward, no stale DOM write',()=>{let nodes={},acts;const c=ctx({S:{coins:0},today:()=> 'day',chestReady:()=>c.S.chestDay!=='day',v7State(){},rollChest:()=>({t:'coins',n:50}),grantReward:r=>{c.S.coins+=r.n;c.persist();return'50'},showLayer:(html,a)=>acts=a,LOBBY:{on:false},$ :id=>nodes[id]});add(c,['openChest']);const box={classList:{add(){},remove(){}}};nodes['#v7box']=box;c.openChest();acts.open({disabled:false,remove(){}});assert.equal(c.S.coins,50);nodes={};c.openChest();acts.open({disabled:false,remove(){}});for(const t of c.timers.values())t.f();assert.equal(c.S.coins,50);assert.equal(c.S.chestDay,'day')});
+  await test('DW18 old puzzle timers never modify the next board or award its reward',()=>{const c=ctx({S:{puzIdx:0,solved:[],stats:{puzzles:0}},MB:{},hydrateIcons(){},mbDraw(){},addCoins(){throw Error('stale reward')},addXP(){},track(){},checkAch(){}});engine(c);vm.runInContext(segment('const PUZ=','const DPOOL='),c);add(c,['boardStr','puzzleView']);let el={};const msg={};c.$=id=>id==='#mbC'?el:msg;c.mbSetup=(canvas,b,done)=>{c.MB.el=canvas;c.MB.b=b;c.MB.onDone=done};const B={};c.puzzleView(B);const m=vm.runInContext('PUZ[0].m',c);c.MB.onDone(m);const initial=JSON.stringify(c.MB.b);el={};c.MB.el=el;c.MB.b=[99];for(const t of [...c.timers.values()])t.f();assert.equal(JSON.stringify(c.MB.b),'[99]');assert.notEqual(initial,'[99]')});
+--- a/dev/tests/run.cjs
++++ b/dev/tests/run.cjs
+@@ -1,5 +1,5 @@
+ const {spawnSync}=require('node:child_process');const path=require('node:path');
+-for(const name of ['test_auth_start.cjs','test_guest_access.cjs','test_save_sync.cjs','test_reliability.cjs','test_free_usage.cjs','test_power_save.cjs','test_mobile_ui.cjs','test_real_social.cjs','test_community.cjs']){
++for(const name of ['test_auth_start.cjs','test_guest_access.cjs','test_save_sync.cjs','test_reliability.cjs','test_free_usage.cjs','test_power_save.cjs','test_mobile_ui.cjs','test_real_social.cjs','test_community.cjs','test_voice.cjs']){
+   const result=spawnSync(process.execPath,[path.join(__dirname,name)],{stdio:'inherit'});
+   if(result.error||result.status!==0)process.exit(result.status||1);
+ }
+--- /dev/null
++++ b/dev/firebase/test_voice_rules.cjs
+@@ -0,0 +1,45 @@
++const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
++const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
++const firebase=require('firebase/compat/app');require('firebase/compat/firestore');firebase.firestore.setLogLevel('silent');
++if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8181')throw Error('Loopback emulator required');
++const root=path.resolve(__dirname,'../..'),rules=fs.readFileSync(root+'/firestore.rules','utf8'),source=fs.readFileSync(root+'/dev/voice.js','utf8');
++const owner=rules.match(/request\.auth\.token\.email == '([^']+)'/)[1],stamp=()=>firebase.firestore.FieldValue.serverTimestamp(),now=()=>firebase.firestore.Timestamp.fromMillis(Date.now()-500),old=firebase.firestore.Timestamp.fromMillis(1000),sessions={a:'a'.repeat(32),b:'b'.repeat(32),x:'c'.repeat(32)},names={a:'Alice',b:'Bobby',x:'Other'},keys={a:'alice',b:'bobby',x:'other'};
++let env,db={},passed=0,failed=0;
++const seat=(uid,extra={})=>({uid,name:names[uid],nameKey:keys[uid],session:sessions[uid],at:now(),mic:false,matchId:'',...extra});
++const membership=(uid,slot,kind='voiceWorlds',space='kw_1')=>({kind,space,slot,session:sessions[uid]});
++const pair=()=>({'voiceWorlds/kw_1/seats/0':seat('a'),'voiceWorlds/kw_1/seats/1':seat('b'),'voiceUsers/a':membership('a','0'),'voiceUsers/b':membership('b','1')});
++const signal=(extra={})=>({fromSession:sessions.a,toSession:sessions.b,sdp:'offer',type:'offer',ice:[],at:stamp(),...extra});
++const ref=(uid,path)=>db[uid].doc(path),out=(uid,from='0',to='1')=>ref(uid,'voiceWorlds/kw_1/seats/'+from+'/signals/'+to);
++async function seed(extra={}){await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const batch=c.firestore().batch();const data={};for(const uid of ['a','b','x'])data['names/'+keys[uid]]={uid,name:names[uid],at:1};for(const [k,v]of Object.entries({...data,...extra}))batch.set(c.firestore().doc(k),v);await batch.commit()})}
++async function test(name,f,extra={}){try{await seed(typeof extra==='function'?extra():extra);await f();passed++;console.log('PASS',name)}catch(e){failed++;console.error('FAIL',name,e.stack||e)}}
++function claim(uid,slot='0',extra={},kind='voiceWorlds',space='kw_1'){const b=db[uid].batch();b.set(ref(uid,kind+'/'+space+'/seats/'+slot),seat(uid,{at:stamp(),...extra}));b.set(ref(uid,'voiceUsers/'+uid),membership(uid,slot,kind,space));return b.commit()}
++function wire(v){if(Array.isArray(v))return Array.from(v,wire);if(v&&typeof v==='object'&&v.constructor?.name==='Object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,wire(x)]));return v}
++function client(uid){const c=vm.createContext({console,Date,Math,Set,Map,Uint8Array,crypto:require('node:crypto').webcrypto,ONL:{role:uid==='a'?'host':'guest',db:{collection:n=>db[uid].collection(n),runTransaction:f=>db[uid].runTransaction(tx=>f({get:r=>tx.get(r),set:(r,v)=>tx.set(r,wire(v)),update:(r,v)=>tx.update(r,wire(v)),delete:r=>tx.delete(r)}))}},firebase});vm.runInContext(source,c);return c}
++(async()=>{env=await initializeTestEnvironment({projectId:'demo-dama-world-rules',firestore:{host:'127.0.0.1',port:8181,rules}});for(const uid of ['a','b','x'])db[uid]=env.authenticatedContext(uid,{firebase:{sign_in_provider:'password'}}).firestore();db.anon=env.authenticatedContext('anon',{firebase:{sign_in_provider:'anonymous'}}).firestore();db.public=env.unauthenticatedContext().firestore();db.admin=env.authenticatedContext('owner',{email:owner,email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();
++try{
++await test('voice: two registered players claim separate real seats using shipped transaction',async()=>{const a=client('a'),b=client('b');const slots=await Promise.all([a.voiceClaim('voiceWorlds','kw_1',sessions.a,'a','Alice','alice',''),b.voiceClaim('voiceWorlds','kw_1',sessions.b,'b','Bobby','bobby','')]);assert.equal(new Set(slots).size,2);assert.equal((await db.a.collection('voiceWorlds/kw_1/seats').limit(8).get()).size,2)});
++await test('voice: same account concurrent sessions cannot occupy two seats',async()=>{const a=client('a');const res=await Promise.allSettled([a.voiceClaim('voiceWorlds','kw_1',sessions.a,'a','Alice','alice',''),a.voiceClaim('voiceWorlds','kw_1','d'.repeat(32),'a','Alice','alice','')]);assert.equal(res.filter(x=>x.status==='fulfilled').length,1)});
++await test('voice: lost acknowledgement retry reuses the same session and slot',async()=>{const a=client('a'),one=await a.voiceClaim('voiceWorlds','kw_1',sessions.a,'a','Alice','alice',''),two=await a.voiceClaim('voiceWorlds','kw_1',sessions.a,'a','Alice','alice','');assert.equal(one,two);assert.equal((await db.a.collection('voiceWorlds/kw_1/seats').limit(8).get()).size,1)});
++await test('voice: live seat cannot be stolen or renamed by another player',async()=>{await assertFails(claim('x','0'));await assertFails(ref('b','voiceWorlds/kw_1/seats/0').update({at:stamp()}));await assertFails(ref('b','voiceWorlds/kw_1/seats/0').delete())},pair);
++await test('voice: forging another name, uid or name key is denied',async()=>{for(const extra of [{name:'Bobby'},{uid:'b'},{nameKey:'bobby'}])await assertFails(claim('a','0',extra))});
++await test('voice: anonymous and unsigned visitors cannot read participants or signal',async()=>{for(const u of ['anon','public']){await assertFails(db[u].collection('voiceWorlds/kw_1/seats').limit(8).get());await assertFails(out(u).get())}},pair);
++await test('voice: banned account cannot join or heartbeat',async()=>{await assertFails(claim('a'));await assertFails(ref('a','voiceWorlds/kw_1/seats/0').update({at:stamp()}))},()=>({...pair(),'ctl/a':{ban:true}}));
++await test('voice: muted player can listen but cannot advertise an active microphone',async()=>{await assertSucceeds(claim('a'));await assertFails(ref('a','voiceWorlds/kw_1/seats/0').update({at:stamp(),mic:true}));await assertSucceeds(ref('a','voiceWorlds/kw_1/seats/0').update({at:stamp(),mic:false}))},{'ctl/a':{mute:true}});
++await test('voice: lease and account index must be written atomically',async()=>{await assertFails(ref('a','voiceWorlds/kw_1/seats/0').set(seat('a',{at:stamp()})));await assertFails(ref('a','voiceUsers/a').set(membership('a','0')))});
++await test('voice: active membership cannot be moved to a second channel',async()=>{await assertFails(claim('a','1',{},'voiceWorlds','kw_2'))},pair);
++await test('voice: expired seat can be reclaimed with a new session',async()=>{await assertSucceeds(claim('x','0'));assert.equal((await ref('x','voiceWorlds/kw_1/seats/0').get()).data().uid,'x')},()=>({...pair(),'voiceWorlds/kw_1/seats/0':seat('a',{at:old})}));
++await test('voice: server timestamp, fixed seat count and bounded participant query enforced',async()=>{await assertFails(claim('a','8'));await assertFails(claim('a','0',{at:old}));await assertFails(db.a.collection('voiceWorlds/kw_1/seats').get());await assertFails(db.a.collection('voiceWorlds/kw_1/seats').limit(9).get());await assertSucceeds(db.a.collection('voiceWorlds/kw_1/seats').limit(8).get())});
++await test('voice: valid offer/answer and ICE are private and delivered live to the other client',async()=>{const got=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{stop();reject(Error('no live signal'))},4000);const stop=out('b').onSnapshot(s=>{if(s.exists){clearTimeout(timer);stop();resolve(s.data())}},reject)});await assertSucceeds(out('a').set(signal({ice:['candidate']})));assert.equal((await got).sdp,'offer');await assertSucceeds(out('b','1','0').set(signal({fromSession:sessions.b,toSession:sessions.a,type:'answer',sdp:'answer'})));await assertFails(out('x').get());await assertFails(db.a.collection('voiceWorlds/kw_1/seats/0/signals').limit(8).get())},pair);
++await test('voice: recipient cannot edit sender signals or forge a session',async()=>{await assertFails(out('b').set(signal()));await assertFails(out('a').set(signal({fromSession:'f'.repeat(32)})));await assertFails(out('a').set(signal({toSession:'f'.repeat(32)})));await assertFails(out('a').set(signal({type:'answer'})))},pair);
++await test('voice: oversized SDP, ICE arrays and extra data are rejected',async()=>{await assertFails(out('a').set(signal({sdp:'x'.repeat(32769)})));await assertFails(out('a').set(signal({ice:Array(33).fill('x')})));await assertFails(out('a').set(signal({save:'private'})))},pair);
++await test('voice: blocking prevents signaling in both directions',async()=>{await assertFails(out('a').set(signal()));await assertFails(out('b','1','0').set(signal({fromSession:sessions.b,toSession:sessions.a,type:'answer'})));await assertFails(out('b').get())},()=>({...pair(),'socialBlocks/b':{uids:['a'],at:now()}}));
++await test('voice: expiry revokes private SDP reads and writes',async()=>{await assertFails(out('a').set(signal()));await assertFails(out('b').get())},()=>({...pair(),'voiceWorlds/kw_1/seats/0':seat('a',{at:old})}));
++await test('voice: release deletes only the caller lease and preserves the other player',async()=>{await client('a').voiceRelease('voiceWorlds','kw_1','0',sessions.a,'a');assert.equal((await ref('a','voiceUsers/a').get()).exists,false);assert.equal((await ref('b','voiceWorlds/kw_1/seats/1').get()).exists,true)},pair);
++await test('voice: delayed release cannot remove a later session',async()=>{await client('a').voiceRelease('voiceWorlds','kw_1','0','f'.repeat(32),'a');assert.equal((await ref('a','voiceWorlds/kw_1/seats/0').get()).exists,true)},pair);
++const room=()=>({'rooms/ABCD':{host:'a',guest:'b',state:'play',matchId:'match1'}});
++await test('voice: only the two match players can claim their own role seats',async()=>{await assertSucceeds(claim('a','0',{matchId:'match1'},'voiceMatches','ABCD'));await assertSucceeds(claim('b','1',{matchId:'match1'},'voiceMatches','ABCD'));await assertFails(claim('x','0',{matchId:'match1'},'voiceMatches','ABCD'));await assertFails(db.x.collection('voiceMatches/ABCD/seats').limit(2).get())},room);
++await test('voice: reversed match roles and old match ids cannot claim a seat',async()=>{await assertFails(claim('a','1',{matchId:'match1'},'voiceMatches','ABCD'));await assertFails(claim('b','0',{matchId:'match1'},'voiceMatches','ABCD'));await assertFails(claim('a','0',{matchId:'old'},'voiceMatches','ABCD'))},room);
++await test('voice: completed matches cannot reopen voice',async()=>{await assertFails(claim('a','0',{matchId:'match1'},'voiceMatches','ABCD'))},{'rooms/ABCD':{host:'a',guest:'b',state:'done',matchId:'match1'}});
++await test('voice: only verified owner publishes public moderation booleans',async()=>{const d={mute:true,ban:false,at:stamp()};await assertSucceeds(ref('admin','voiceControls/a').set(d));await assertSucceeds(ref('b','voiceControls/a').get());await assertFails(ref('a','voiceControls/a').set(d));await assertFails(ref('admin','voiceControls/a').set({...d,email:'secret'}));await assertFails(ref('b','ctl/a').get())});
++await test('voice: private match signaling allows both members and denies outsiders',async()=>{await claim('a','0',{matchId:'match1'},'voiceMatches','ABCD');await claim('b','1',{matchId:'match1'},'voiceMatches','ABCD');const path='voiceMatches/ABCD/seats/0/signals/1';await assertSucceeds(ref('a',path).set(signal()));await assertSucceeds(ref('b',path).get());await assertFails(ref('x',path).get())},room);
++}finally{await env.cleanup()}console.log(`Voice rules: ${passed} passed, ${failed} failed`);if(failed)process.exitCode=1})().catch(e=>{console.error(e);process.exitCode=1});
+--- /dev/null
++++ b/dev/firebase/test_voice_media.cjs
+@@ -0,0 +1,46 @@
++// Real libwebrtc peer connections + real Firebase SDK clients against loopback rules.
++// Synthetic PCM replaces physical microphones. This is not a two-browser/device acceptance test.
++const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
++const {initializeTestEnvironment}=require('@firebase/rules-unit-testing');
++const firebase=require('firebase/compat/app');require('firebase/compat/firestore');firebase.firestore.setLogLevel('silent');
++const rtc=require(process.env.VOICE_WRTC_MODULE||'@roamhq/wrtc');
++if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8181')throw Error('Loopback emulator required');
++const root=path.resolve(__dirname,'../..'),source=fs.readFileSync(root+'/dev/voice.js','utf8'),rules=fs.readFileSync(root+'/firestore.rules','utf8');
++const owner=rules.match(/request\.auth\.token\.email == '([^']+)'/)[1],clients=[],nativePCs=[],sources=[],sinks=[],timers=new Set();let env,passed=0;
++function wire(v){if(Array.isArray(v))return Array.from(v,wire);if(v&&typeof v==='object'&&v.constructor?.name==='Object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,wire(x)]));return v}
++const sleep=ms=>new Promise(r=>setTimeout(r,ms));
++async function until(check,label,ms=10000){const end=Date.now()+ms;while(Date.now()<end){if(check())return;await sleep(40)}console.error('RTC STATE',JSON.stringify(clients.map(w=>({uid:w.uid,peers:[...w.state.peers.values()].map(p=>({uid:p.uid,offerer:p.offerer,state:p.pc.connectionState,ice:p.pc.iceConnectionState,gather:p.pc.iceGatheringState,local:p.pc.localDescription?.type,remote:p.pc.remoteDescription?.type,got:p.got.size,queued:p.ice.length,latest:!!p.latest,signaling:p.signaling}))}))));throw Error(label+' timed out: '+clients.map(x=>x.uid+': '+x.c.voiceStatus()).join(' | '))}
++function checked(name){passed++;console.log('PASS',name)}
++function client(uid,name,frequency){const db=env.authenticatedContext(uid,{firebase:{sign_in_provider:'password'}}).firestore(),outputs=[];let captures=0;
++ const sdk={collection:n=>db.collection(n),runTransaction:f=>db.runTransaction(tx=>f({get:r=>tx.get(r),set:(r,v)=>tx.set(r,wire(v)),update:(r,v)=>tx.update(r,wire(v)),delete:r=>tx.delete(r)}))};
++ function tone(){captures++;const src=new rtc.nonstandard.RTCAudioSource(),track=src.createTrack(),stream=new rtc.MediaStream([track]);sources.push(track);let phase=0;const timer=setInterval(()=>{if(track.readyState==='ended')return;const samples=new Int16Array(480);for(let i=0;i<480;i++)samples[i]=Math.round(Math.sin((phase++)*2*Math.PI*frequency/48000)*8000);src.onData({samples,sampleRate:48000,bitsPerSample:16,channelCount:1,numberOfFrames:480})},10);timers.add(timer);return stream}
++ function audio(){const a={muted:false,heard:0,energy:0,frames:0,setAttribute(){},play:async()=>{},pause(){},remove(){if(this.sink)this.sink.stop()},set srcObject(stream){if(this.sink)this.sink.stop();this.stream=stream;if(!stream)return;this.sink=new rtc.nonstandard.RTCAudioSink(stream.getAudioTracks()[0]);sinks.push(this.sink);this.sink.ondata=d=>{this.frames++;let power=0;for(const x of d.samples)power+=Math.abs(x);this.energy=power/d.samples.length;if(!this.muted&&this.energy>100)this.heard++}},get srcObject(){return this.stream}};outputs.push(a);return a}
++ const c=vm.createContext({console,Date,Math,JSON,Set,Map,Array,Number,Object,String,Promise,Uint8Array,crypto:require('node:crypto').webcrypto,
++   setTimeout,clearTimeout,setInterval:(f,ms)=>{const t=setInterval(f,ms);timers.add(t);return t},clearInterval,
++   RTCPeerConnection:function(){const pc=new rtc.RTCPeerConnection({iceServers:[],bundlePolicy:'max-bundle'});nativePCs.push(pc);return pc},MediaStream:rtc.MediaStream,
++   window:{RTCPeerConnection:rtc.RTCPeerConnection},document:{hidden:false,body:{appendChild(){}},createElement:audio},navigator:{onLine:true,mediaDevices:{getUserMedia:async()=>tone()}},
++   ONL:{db:sdk,code:'ABCD',room:{state:'play',matchId:'voice-match'},ref:{},role:uid==='a'?'host':'guest'},ACC:{name,key:name.toLowerCase(),synced:true},CTL:{mute:false,ban:false},
++   S:{country:'kw',settings:{mic:false,matchVoice:false,oppVoice:true}},mode:'explore',LOBBY:{on:false},game:{online:{},over:false},rsUid:()=>uid,rcBlocked:()=>false,requirePlayAccount:()=>true,toast:msg=>console.log('VOICE',uid,msg),$ :()=>null,ic:()=>'',firebase});
++ vm.runInContext(source,c);c.voiceUI=()=>{};const state=vm.runInContext('VC',c),w={uid,c,state,outputs,captures:()=>captures};clients.push(w);return w;
++}
++let finished=false;async function finish(){if(finished)return;finished=true;for(const w of clients)w.c.voiceStop();await Promise.all(clients.map(w=>w.state.releasing));for(const t of timers)clearInterval(t);for(const s of sinks)try{s.stop()}catch{}for(const t of sources)t.stop();for(const p of nativePCs)p.close();if(env)await env.cleanup();await sleep(200)}
++(async()=>{env=await initializeTestEnvironment({projectId:'demo-dama-world-rules',firestore:{host:'127.0.0.1',port:8181,rules}});await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const b=c.firestore().batch();for(const [uid,name]of [['a','Alice'],['b','Bobby'],['x','Third']])b.set(c.firestore().doc('names/'+name.toLowerCase()),{uid,name,at:1});b.set(c.firestore().doc('rooms/ABCD'),{host:'a',guest:'b',state:'play',matchId:'voice-match'});await b.commit()});
++try{
++ const a=client('a','Alice',440),b=client('b','Bobby',880);
++ await Promise.all([a.c.voiceJoin('voiceWorlds','kw_1'),b.c.voiceJoin('voiceWorlds','kw_1')]);
++ await until(()=>a.state.peers.get('b')?.state==='connected'&&b.state.peers.get('a')?.state==='connected','world connected');
++ assert.equal(a.captures()+b.captures(),0);checked('real WebRTC: world channel connects two Firebase clients with microphones initially closed');
++ await Promise.all([a.c.voiceMic(),b.c.voiceMic()]);await until(()=>a.outputs.some(x=>x.heard>15)&&b.outputs.some(x=>x.heard>15),'bidirectional decoded PCM');checked('real WebRTC: both world players receive nonzero decoded audio over SRTP');
++ const third=client('x','Third',1320);await third.c.voiceJoin('voiceWorlds','kw_1');await third.c.voiceMic();
++ await until(()=>[a,b,third].every(w=>w.outputs.filter(x=>x.heard>15).length===2),'three-player mesh');checked('real WebRTC: three world participants exchange distinct live audio streams');
++ a.c.voiceMicOff();await until(()=>b.outputs.every(x=>x.energy<100||x===b.state.peers.get('x')?.audio),'mic silence');assert.equal(a.state.local,null);checked('real WebRTC: closing microphone stops source and the other player receives silence');
++ await a.c.voiceMic();await until(()=>b.state.peers.get('a')?.audio.energy>100,'reopen microphone');checked('real WebRTC: microphone reopens with replaceTrack without renegotiating the call');
++ const admin=env.authenticatedContext('owner',{email:owner,email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();await admin.doc('voiceControls/a').set({mute:true,ban:false,at:firebase.firestore.FieldValue.serverTimestamp()});await until(()=>b.state.peers.get('a')?.audio.muted&&third.state.peers.get('a')?.audio.muted,'admin mute');const heard=b.state.peers.get('a').audio.heard;await sleep(200);assert.equal(b.state.peers.get('a').audio.heard,heard);checked('real WebRTC: owner mute immediately suppresses playback at both other peers');
++ for(const w of [a,b,third])w.c.voiceStop();await Promise.all([a,b,third].map(w=>w.state.releasing));assert([a,b,third].every(w=>w.state.peers.size===0&&!w.state.local));checked('real WebRTC: world exit closes every connection, track and Firebase lease');
++ await admin.doc('voiceControls/a').set({mute:false,ban:false,at:firebase.firestore.FieldValue.serverTimestamp()});
++ for(const w of [a,b]){w.c.mode='match';w.outputs.length=0}await Promise.all([a.c.vcStart(),b.c.vcStart()]);await until(()=>a.state.peers.get('b')?.state==='connected'&&b.state.peers.get('a')?.state==='connected','match connected');
++ await Promise.all([a.c.voiceMic(),b.c.voiceMic()]);await until(()=>a.outputs.some(x=>x.heard>15)&&b.outputs.some(x=>x.heard>15),'match audio');checked('real WebRTC: private match seats negotiate and carry decoded audio both directions');
++ b.c.S.settings.oppVoice=false;b.c.voiceAudio(b.state.peers.get('a'));assert(b.state.peers.get('a').audio.muted);checked('real WebRTC: opponent speaker control affects actual playback');
++ b.c.document.hidden=true;b.c.voiceTick();await until(()=>a.state.peers.size===0,'hidden peer cleanup');assert(!b.state.local);checked('real WebRTC: backgrounding a player closes capture and removes the remote connection');
++}finally{await finish()}console.log(`Real voice media: ${passed} passed. Native WebRTC + synthetic PCM; physical devices/browsers not verified.`);
++})().then(()=>{process.exit(0)},async e=>{console.error(e);await finish();process.exit(1)});
+--- a/dev/firebase/suites.cjs
++++ b/dev/firebase/suites.cjs
+@@ -1,2 +1,2 @@
+ const {spawnSync}=require('node:child_process');const path=require('node:path');
+-for(const file of ['test_rules.cjs','test_social_rules.cjs','test_community_rules.cjs']){const r=spawnSync(process.execPath,[path.join(__dirname,file)],{stdio:'inherit',env:process.env});if(r.error)throw r.error;if(r.status!==0)process.exit(r.status||1)}
++for(const file of ['test_rules.cjs','test_social_rules.cjs','test_community_rules.cjs','test_voice_rules.cjs','test_voice_media.cjs']){const r=spawnSync(process.execPath,[path.join(__dirname,file)],{stdio:'inherit',env:process.env});if(r.error)throw r.error;if(r.status!==0)process.exit(r.status||1)}
+--- a/dev/firebase/package.json
++++ b/dev/firebase/package.json
+@@ -6,6 +6,7 @@
+   },
+   "devDependencies": {
+     "@firebase/rules-unit-testing": "6.0.0",
++    "@roamhq/wrtc": "0.10.0",
+     "firebase": "13.0.0",
+     "firebase-tools": "14.22.0"
+   }
+--- a/dev/firebase/package-lock.json
++++ b/dev/firebase/package-lock.json
+@@ -7,6 +7,7 @@
+       "name": "dama-world-firestore-verification",
+       "devDependencies": {
+         "@firebase/rules-unit-testing": "6.0.0",
++        "@roamhq/wrtc": "0.10.0",
+         "firebase": "13.0.0",
+         "firebase-tools": "14.22.0"
+       }
+@@ -2326,6 +2327,91 @@
+       "dev": true,
+       "license": "BSD-3-Clause"
+     },
++    "node_modules/@roamhq/wrtc": {
++      "version": "0.10.0",
++      "resolved": "https://registry.npmjs.org/@roamhq/wrtc/-/wrtc-0.10.0.tgz",
++      "integrity": "sha512-yFqQQ0EV1ZUHaphh3tmjoxPi2wzhW2vjmzoAVNRRLUjXYd2e1nvwi9TKfE2w4WNvNws/hBkouvOt23Xo9FkXkQ==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optionalDependencies": {
++        "@roamhq/wrtc-darwin-arm64": "0.10.0",
++        "@roamhq/wrtc-darwin-x64": "0.10.0",
++        "@roamhq/wrtc-linux-arm64": "0.10.0",
++        "@roamhq/wrtc-linux-x64": "0.10.0",
++        "@roamhq/wrtc-win32-x64": "0.10.0",
++        "domexception": "^4.0.0"
++      }
++    },
++    "node_modules/@roamhq/wrtc-darwin-arm64": {
++      "version": "0.10.0",
++      "resolved": "https://registry.npmjs.org/@roamhq/wrtc-darwin-arm64/-/wrtc-darwin-arm64-0.10.0.tgz",
++      "integrity": "sha512-vFdi79jWuPHcnUcnuOjTvyKtmY/RI2xRQo9Y6RsIjIlYePN/7LTy00c+Ivrz4prYAPbp0oHscl7PDV64VUqGTQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optional": true,
++      "os": [
++        "darwin"
++      ]
++    },
++    "node_modules/@roamhq/wrtc-darwin-x64": {
++      "version": "0.10.0",
++      "resolved": "https://registry.npmjs.org/@roamhq/wrtc-darwin-x64/-/wrtc-darwin-x64-0.10.0.tgz",
++      "integrity": "sha512-H6852g2xYCuaR+/TrthpdMafs4bMfAUEpvRDhsIguzrK7Dz+MKpNI8MkwdqJN8W65J+7w7k+YqXIkTHe7Fz/cg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optional": true,
++      "os": [
++        "darwin"
++      ]
++    },
++    "node_modules/@roamhq/wrtc-linux-arm64": {
++      "version": "0.10.0",
++      "resolved": "https://registry.npmjs.org/@roamhq/wrtc-linux-arm64/-/wrtc-linux-arm64-0.10.0.tgz",
++      "integrity": "sha512-fEuJbNjprxQG6QlFd2iqBW9x028RDSho6izVg7gyt8irdPiXWOxzOxNnYMs/B2fohBTd1wD4Qxfivl07/dCR8A==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@roamhq/wrtc-linux-x64": {
++      "version": "0.10.0",
++      "resolved": "https://registry.npmjs.org/@roamhq/wrtc-linux-x64/-/wrtc-linux-x64-0.10.0.tgz",
++      "integrity": "sha512-H32lK2eFg3sVb/9nkHIX5HIisxFoS82Gpesuea+zqAyRpRzSd5NpFXx28bVy9wQyRrNtj8k0bTUgEzWRzSbYCA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@roamhq/wrtc-win32-x64": {
++      "version": "0.10.0",
++      "resolved": "https://registry.npmjs.org/@roamhq/wrtc-win32-x64/-/wrtc-win32-x64-0.10.0.tgz",
++      "integrity": "sha512-wEVXMvLrBizdLyrd+Zc7zb7zpwUuHUBXwrdIvI69e3i/AA8YsVYI2xo/sxk6GoQ+o8a14ONc4SStDS35TCjg+w==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optional": true,
++      "os": [
++        "win32"
++      ]
++    },
+     "node_modules/@sindresorhus/is": {
+       "version": "4.6.0",
+       "resolved": "https://registry.npmjs.org/@sindresorhus/is/-/is-4.6.0.tgz",
+@@ -4497,6 +4583,32 @@
+       "integrity": "sha512-c68LpLbO+7kP/b1Hr1qs8/BJ09F5khZGTxqxZuhzxpmwJKOgRFHJWIb9/KmqnqHhLdO55aOxFH/EGBvUQbL/RQ==",
+       "dev": true,
+       "license": "MIT"
++    },
++    "node_modules/domexception": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/domexception/-/domexception-4.0.0.tgz",
++      "integrity": "sha512-A2is4PLG+eeSfoTMA95/s4pvAoSo2mKtiM5jlHkAVewmiO8ISFTFKZjH7UAM1Atli/OT/7JHOrJRJiMKUZKYBw==",
++      "deprecated": "Use your platform's native DOMException instead",
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "webidl-conversions": "^7.0.0"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/domexception/node_modules/webidl-conversions": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-7.0.0.tgz",
++      "integrity": "sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "optional": true,
++      "engines": {
++        "node": ">=12"
++      }
+     },
+     "node_modules/dot-prop": {
+       "version": "5.3.0",
