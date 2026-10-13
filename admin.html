@@ -146,6 +146,7 @@ body{overflow-x:hidden}
   </div>
 </section>
 
+<section class="tab" id="t-chat"><div class="card"><h2>الدردشة</h2><p class="hint">آخر 50 رسالة. الحذف متاح للمالك فقط.</p><div class="row"><select class="in" id="adminChatRoom"><option value="world">العالمية</option></select><button class="btn sec" id="adminChatRefresh">تحديث</button></div><div id="adminChatList" class="empty">افتح التبويب لتحميل الرسائل.</div></div></section>
 <section class="tab" id="t-reports">
   <div class="card"><h2>🚩 البلاغات</h2><p class="hint">اللاعبين يبلّغون عن خصمهم من زر 🚩 بالمباراة الأونلاين.</p>
     <div class="chips"><button class="chip on" data-r="open">الجديدة</button><button class="chip" data-r="done">اللي خلصت</button></div>
@@ -185,6 +186,7 @@ body{overflow-x:hidden}
 <nav><div class="in">
   <button class="on" data-t="stats"><i>📊</i>الرئيسية</button>
   <button data-t="players"><i>👥</i>اللاعبين</button>
+  <button data-t="chat"><i>💬</i>الدردشة</button>
   <button data-t="reports"><i>🚩</i>البلاغات<em class="bdg" id="rBdg" hidden></em></button>
   <button data-t="shop"><i>🛒</i>المتجر</button>
   <button data-t="events"><i>🎉</i>الفعاليات</button>
@@ -219,7 +221,7 @@ function gate(title,msg,btn){$('#app').hidden=true;$('#gate').hidden=false;$('#g
 function loginBtn(){gate('لوحة المالك','سجّل دخول بحساب Google حقك عشان تفتح اللوحة.','<button class="gbtn" id="gIn">'+G_SVG+'دخول بـ Google</button>');
   $('#gIn').onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){toast(e.code==='auth/popup-closed-by-user'?'سكّرت نافذة Google':'ما ضبط الدخول: '+(e.code||e.message))}}}
 let adminEpoch=0;
-async function adminSession(u){const epoch=++adminEpoch;
+async function adminSession(u){const epoch=++adminEpoch;if(typeof adminChatStop==='function')adminChatStop(true);
   if(!u||u.isAnonymous){loginBtn();return}
   gate('لوحة المالك','نتأكد من صلاحيات حسابك…');
   try{await cnt('users');if(adminEpoch!==epoch||auth.currentUser!==u)return;
@@ -232,7 +234,7 @@ $('#out').onclick=()=>auth.signOut();
 
 /* ---------- التنقل ---------- */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{closeSheet();document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='t-'+b.dataset.t));if(b.dataset.t==='players'&&!$('#plist').children.length)loadPlayers();if(b.dataset.t==='reports')loadReports();if(b.dataset.t==='shop')drawShop();if(b.dataset.t==='events')drawEvents();window.scrollTo(0,0)});
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='t-'+b.dataset.t));if(b.dataset.t==='players'&&!$('#plist').children.length)loadPlayers();if(b.dataset.t==='reports')loadReports();if(b.dataset.t==='chat')adminChatOpen();else adminChatStop();if(b.dataset.t==='shop')drawShop();if(b.dataset.t==='events')drawEvents();window.scrollTo(0,0)});
 
 let started=false;
 function start(){if(started)return;started=true;loadStats();repBadge();setInterval(()=>{if(!document.hidden)repBadge()},60000);setInterval(()=>{if(!document.hidden&&$('#t-stats').classList.contains('on'))loadStats()},30000);watchCfg()}
@@ -303,7 +305,7 @@ function drawPlayer(){const id=cur,d=PD[id]||{},c=ctlCache[id]||{},co=coinsOf(d)
     (d.created?'<div class="hint">أول دخول: '+new Date(d.created).toLocaleDateString('ar-KW',{year:'numeric',month:'long',day:'numeric'})+'</div>':'')+
     '<div class="sec-t">🪙 الكوينز</div><div class="row"><input class="in" id="cAmt" type="number" inputmode="numeric" min="1" placeholder="الكمية" style="flex:1;min-width:120px"><button class="btn grn" id="cAdd">+ أضف</button><button class="btn red" id="cSub">− اخصم</button></div>'+
     (co==null?'<div class="hint" style="margin-top:6px">هذا ضيف — رصيده مو محفوظ عندنا، بس الهدية بتوصله أول ما يفتح اللعبة.</div>':'')+
-    '<div class="sec-t">🔇 الكتم</div><div class="row"><button class="btn '+(c.mute?'sec':'red')+'" id="mBtn">'+(c.mute?'فك الكتم':'اكتم المايك')+'</button><span class="hint" style="margin:0">'+(c.mute?'مكتوم الحين — ما يقدر يتكلم بالمباريات':'يقدر يتكلم بالمباريات')+'</span></div>'+
+    '<div class="sec-t">🔇 الكتم</div><div class="row"><button class="btn '+(c.mute?'sec':'red')+'" id="mBtn">'+(c.mute?'فك الكتم':'اكتم المايك والدردشة')+'</button><span class="hint" style="margin:0">'+(c.mute?'مكتوم الحين — ما يقدر يتكلم أو يكتب':'يقدر يتكلم ويكتب')+'</span></div>'+
     '<div class="sec-t">⛔ الحظر</div>'+(c.ban?'<div class="hint">محظور. السبب: '+esc(c.banWhy||'—')+'</div><button class="btn grn" id="bBtn">فك الحظر</button>':
       '<input class="in" id="bWhy" maxlength="120" placeholder="السبب (يطلع له) — مثال: كلام غير لائق"><div class="row" style="margin-top:8px"><button class="btn red" id="bBtn">احظره</button></div>')+
     '<div class="sec-t">رقم اللاعب</div><div class="uid">'+esc(id)+'</div>';
@@ -339,7 +341,7 @@ $('#mSave').onclick=async()=>{try{await CFG.set({maintMsg:$('#mMsg').value.trim(
 async function cfgPut(field,val){const o={};o[field]=val;try{await CFG.update(o)}catch(e){if(e&&e.code==='permission-denied')throw e;await CFG.set(o,{merge:true})}}
 
 /* ---------- البلاغات ---------- */
-const WHY={voice:'كلام غير لائق بالمايك',name:'اسم أو صورة غير لائقة',cheat:'غش أو تلاعب',other:'شي ثاني'};
+const WHY={chat:'رسالة دردشة غير لائقة',voice:'كلام غير لائق بالمايك',name:'اسم أو صورة غير لائقة',cheat:'غش أو تلاعب',other:'شي ثاني'};
 const R=db.collection('reports');let rFilt='open';
 const REPORT_PAGE={token:0,cursor:null,docs:[],more:false,busy:false};
 (function(){const first=document.querySelector('[data-r]');if(first){const b=document.createElement('button');b.className='chip';b.dataset.r='legacy';b.textContent='بلاغات قديمة بلا تاريخ';first.parentNode.appendChild(b)}})();
@@ -355,10 +357,10 @@ async function loadReports(more){if(more&&REPORT_PAGE.busy)return;const el=$('#r
     const per={};docs.forEach(d=>{const t=d.data().target;per[t]=(per[t]||0)+1});
     el.innerHTML=docs.map(d=>{const x=d.data();return'<div class="rep"><div class="top"><div class="av">'+esc((x.targetName||'؟').trim()[0])+'</div><div style="flex:1;min-width:0"><b>'+esc(x.targetName||'—')+'</b>'+(per[x.target]>1?'<span class="tag ban">'+per[x.target]+' بلاغات بالقائمة</span>':'')+'<div class="by">'+ago(x.at).replace('أونلاين الحين','الحين')+'</div></div></div>'+
       '<span class="why">'+esc(WHY[x.reason]||x.reason||'')+'</span>'+(x.note?'<div class="note">"'+esc(x.note)+'"</div>':'')+'<div class="by">بلّغ عنه: '+esc(x.byName||'—')+(x.room?' · غرفة '+esc(x.room):'')+'</div>'+
-      '<div class="row"><button class="btn sec" data-op="'+esc(x.target)+'">افتح اللاعب</button>'+(x.status==='open'?'<button class="btn grn" data-done="'+d.id+'">✓ خلصت</button>':'<button class="btn sec" data-re="'+d.id+'">رجّعه جديد</button>')+'</div></div>'}).join('')+next}
+      '<div class="row"><button class="btn sec" data-op="'+esc(x.target)+'">افتح اللاعب</button>'+(x.type==='chat'&&x.messageId?'<button class="btn red" data-reportdelete="'+esc(d.id)+'">حذف الرسالة المبلّغ عنها</button>':'')+(x.status==='open'?'<button class="btn grn" data-done="'+d.id+'">✓ خلصت</button>':'<button class="btn sec" data-re="'+d.id+'">رجّعه جديد</button>')+'</div></div>'}).join('')+next}
   catch(e){if(token===REPORT_PAGE.token)el.innerHTML='<div class="empty">'+esc(errMsg(e))+'</div><button class="btn sec" data-retry="1">إعادة المحاولة</button>'}finally{if(token===REPORT_PAGE.token)REPORT_PAGE.busy=false}}
 $('#rlist').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.more)return loadReports(true);if(b.dataset.retry)return loadReports();if(b.dataset.op)return openPlayer(b.dataset.op);
+  if(b.dataset.reportdelete)return adminDeleteReportMessage(b.dataset.reportdelete);if(b.dataset.more)return loadReports(true);if(b.dataset.retry)return loadReports();if(b.dataset.op)return openPlayer(b.dataset.op);
   const id=b.dataset.done||b.dataset.re;if(!id)return;try{await R.doc(id).update({status:b.dataset.done?'done':'open',doneAt:Date.now()});toast(b.dataset.done?'✅ تم':'رجع للجديدة');loadReports();repBadge()}catch(err){toast(errMsg(err))}});
 
 /* ---------- المتجر ---------- */
@@ -403,6 +405,16 @@ $('#tourSave').onclick=async()=>{const out={};for(const k in TDEF){const o={},nm
     if(Object.keys(o).length)out[k]=o}
   try{await cfgPut('tours',out);toast('✅ انحفظت البطولات')}catch(e){toast(errMsg(e))}};
 $('#tourReset').onclick=async()=>{if(!confirm('ترجّع البطولات للافتراضي؟'))return;try{await cfgPut('tours',{});toast('رجعت للافتراضي');setTimeout(drawEvents,400)}catch(e){toast(errMsg(e))}};
+
+/* ---------- إدارة الدردشة الحقيقية ---------- */
+let adminChatUnsub=null,adminChatToken=0,adminChatRows=[];
+function adminChatStop(clear=false){adminChatToken++;if(adminChatUnsub)adminChatUnsub();adminChatUnsub=null;if(clear){adminChatRows=[];const el=$('#adminChatList');if(el)el.textContent=''}}
+async function adminChatOpen(){const uid=auth.currentUser&&auth.currentUser.uid;if(!uid||$('#app').hidden)return;adminChatStop();const token=adminChatToken;try{const clans=await db.collection('clans').limit(50).get();if(token!==adminChatToken||auth.currentUser?.uid!==uid)return;const select=$('#adminChatRoom'),chosen=select.value;select.innerHTML='<option value="world">العالمية</option>'+clans.docs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.data().name)+'</option>').join('');select.value=[...select.options].some(o=>o.value===chosen)?chosen:'world';adminChatWatch()}catch(e){$('#adminChatList').textContent=errMsg(e)}}
+function adminChatWatch(){adminChatStop();if(document.hidden||$('#app').hidden||!auth.currentUser)return;const token=adminChatToken,uid=auth.currentUser.uid,room=$('#adminChatRoom').value;$('#adminChatList').textContent='نحمّل…';adminChatUnsub=db.collection('chatRooms').doc(room).collection('messages').orderBy('at','desc').limit(50).onSnapshot(s=>{if(token!==adminChatToken||auth.currentUser?.uid!==uid||s.metadata.hasPendingWrites)return;adminChatRows=s.docs.map(d=>({id:d.id,...d.data()}));$('#adminChatList').innerHTML=adminChatRows.length?adminChatRows.map(m=>'<div class="rep"><b>'+esc(m.name)+'</b><div class="note">'+esc(m.text)+'</div><div class="by">'+ago(m.at&&m.at.toMillis())+'</div><div class="row"><button class="btn sec" data-player="'+esc(m.uid)+'">اللاعب</button><button class="btn red" data-chatdelete="'+esc(m.id)+'">حذف الرسالة</button></div></div>').join(''):'ما فيه رسائل.'},e=>{if(token===adminChatToken)$('#adminChatList').textContent=errMsg(e)})}
+async function adminDeleteReportMessage(id){const report=REPORT_PAGE.docs.find(d=>d.id===id),r=report&&report.data();if(!r||r.type!=='chat'||!r.room||!r.messageId||!confirm('تحذف الرسالة المبلّغ عنها نهائيًا؟'))return;try{await db.collection('chatRooms').doc(r.room).collection('messages').doc(r.messageId).delete();toast('تم حذف الرسالة المبلّغ عنها')}catch(e){toast(errMsg(e))}}
+async function adminChatDelete(id){const room=$('#adminChatRoom').value;if(!adminChatRows.some(m=>m.id===id)||!confirm('تحذف هذه الرسالة نهائيًا؟'))return;try{await db.collection('chatRooms').doc(room).collection('messages').doc(id).delete();toast('تم حذف الرسالة')}catch(e){toast(errMsg(e))}}
+$('#adminChatRefresh').onclick=adminChatOpen;$('#adminChatRoom').onchange=adminChatWatch;$('#adminChatList').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.chatdelete)adminChatDelete(b.dataset.chatdelete);else if(b.dataset.player)openPlayer(b.dataset.player)};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)adminChatStop();else if($('#t-chat').classList.contains('on')&&!$('#app').hidden)adminChatOpen()});
 </script>
 </body>
 </html>
