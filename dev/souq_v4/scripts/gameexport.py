@@ -164,6 +164,13 @@ def bake_maps(o, sizes, samples=24, selected=None, extrusion=.15):
                 if btype == 'NORMAL': kw['normal_space'] = 'TANGENT'
                 if selected: kw.update(use_selected_to_active=True, cage_extrusion=extrusion, max_ray_distance=extrusion * 2)
                 bpy.ops.object.bake(**kw)
+                if btype == 'DIFFUSE':      # an occasional first bake comes back all black: check and bake again
+                    for attempt in range(2):
+                        import numpy as np
+                        px = np.empty(w * h * 4, dtype=np.float32); im.pixels.foreach_get(px)
+                        if float(px.reshape(-1, 4)[:, :3].max()) > .02: break
+                        log('black colour bake on %s, retry %d' % (o.name, attempt + 1))
+                        bpy.ops.object.bake(**kw)
             for m, n in nodes: m.node_tree.nodes.remove(n)
             im.filepath_raw = os.path.join(OUT, 'bake', im.name + '.png'); im.file_format = 'PNG'
             os.makedirs(os.path.join(OUT, 'bake'), exist_ok=True); im.save()
@@ -333,8 +340,10 @@ def collision(region=(-12.0, 21.5, -14.0, 7.5), cell=.1, oz=150.0):
     solid = [[False] * nx for _ in range(ny)]
     for j in range(ny):
         for i in range(nx):
-            p = Vector((x0 + (i + .5) * cell, y0 + (j + .5) * cell, 1.0))
-            if any(_parity_inside(b, p) for b in shell_meshes): solid[j][i] = True
+            # off-grid sample point and two ray directions that must agree: a sample lying exactly on a
+            # wall face (wall thickness 0.55 m = grid multiple) otherwise reads as a fake thin wall
+            p = Vector((x0 + (i + .5) * cell + .0137, y0 + (j + .5) * cell + .0171, 1.0))
+            if any(_parity_inside(b, p) and _parity_inside(b, p, Vector((0, 1, 0))) for b in shell_meshes): solid[j][i] = True
     rects = []
     used = [[False] * nx for _ in range(ny)]
     for j in range(ny):
