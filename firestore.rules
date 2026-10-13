@@ -7,6 +7,27 @@ service cloud.firestore {
     function ctlDoc() { return /databases/$(database)/documents/ctl/$(request.auth.uid); }
     function notBanned() { return !exists(ctlDoc()) || get(ctlDoc()).data.get('ban', false) != true; }
     function changesOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function canSpeak() { return registered() && notBanned() && (!exists(ctlDoc()) || get(ctlDoc()).data.get('mute',false) != true); }
+    function nameKey(name) {
+      return name.lower().replace('[ً-ٟـ]', '').replace('[إأآ]', 'ا').replace('ى','ي').replace('ة','ه').replace('[\\s_.-]', '').replace('/', '');
+    }
+    function validName(name, key) {
+      return name is string && name.size() >= 3 && name.size() <= 14 && name.matches('^[؀-ۿa-zA-Z0-9 _.\\-]+$')
+        && key.size() > 0 && key == nameKey(name);
+    }
+    function named(uid, name, key) {
+      return key is string && key.size() > 0 && key.size() <= 100 && !key.matches('.*[/].*')
+        && validName(name,key)
+        && get(/databases/$(database)/documents/names/$(key)).data.uid == uid
+        && get(/databases/$(database)/documents/names/$(key)).data.name == name;
+    }
+    function cleanCommunityText(text) {
+      return text is string && text.size() >= 1 && text.size() <= 200 && text.trim().size() > 0
+        && !text.lower().replace('[ً-ٟـ]', '').replace('[إأآ]', 'ا').replace('ى','ي').replace('ة','ه')
+          .matches('(?s).*(كلب|حمار|غبي|تبن|زق|حقير|وصخ|fuck|shit|bitch|idiot|stupid).*');
+    }
+    function clanMember(id) { return exists(/databases/$(database)/documents/clans/$(id)) && request.auth.uid in get(/databases/$(database)/documents/clans/$(id)).data.members; }
+    function channelMember(id) { return id == 'world' || clanMember(id); }
 
     match /users/{uid} {
       // The document contains the complete private save, not just a public profile.
@@ -16,12 +37,13 @@ service cloud.firestore {
     }
     match /names/{key} {
       allow read: if signedIn();
-      allow create: if registered() && request.resource.data.uid == request.auth.uid;
+      allow create: if registered() && notBanned() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid','name','at']) && request.resource.data.at is int
+        && validName(request.resource.data.name,key);
       // Reusing a normalized name may change its display spelling, never its owner.
       allow update: if registered() && resource.data.uid == request.auth.uid
         && request.resource.data.uid == resource.data.uid && changesOnly(['name', 'at'])
-        && request.resource.data.name is string && request.resource.data.name.size() >= 3
-        && request.resource.data.name.size() <= 14 && request.resource.data.at is int;
+        && validName(request.resource.data.name,key) && request.resource.data.at is int;
       allow delete: if (signedIn() && resource.data.uid == request.auth.uid) || isAdmin();
     }
     match /ctl/{uid} {
@@ -33,8 +55,93 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /reports/{id} {
-      allow create: if signedIn() && request.resource.data.by == request.auth.uid && request.resource.data.status == 'open';
+      function chatReport(r) {
+        let m = get(/databases/$(database)/documents/chatRooms/$(r.room)/messages/$(r.messageId)).data;
+        return registered() && notBanned() && channelMember(r.room)
+          && r.keys().hasOnly(['type','by','byName','byKey','target','targetName','reason','note','room','messageId','at','createdAt','status'])
+          && r.type == 'chat' && r.reason == 'chat' && id == request.auth.uid + '~' + r.messageId
+          && r.target == m.uid && r.targetName == m.name && r.note == m.text
+          && named(request.auth.uid,r.byName,r.byKey) && r.createdAt == request.time && r.at is int;
+      }
+      allow create: if signedIn() && request.resource.data.by == request.auth.uid && request.resource.data.status == 'open'
+        && (request.resource.data.get('type','') == 'chat' ? chatReport(request.resource.data)
+          : request.resource.data.get('reason','other') in ['voice','name','cheat','other']);
       allow read, update, delete: if isAdmin();
+    }
+
+    match /socialBlocks/{uid} {
+      allow get: if registered() && request.auth.uid == uid;
+      allow create, update: if registered() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uids','at']) && request.resource.data.uids is list
+        && request.resource.data.uids.size() <= 1000 && request.resource.data.at == request.time;
+    }
+    match /presence/{uid} {
+      function friends() {
+        let pair = uid < request.auth.uid ? uid + '~' + request.auth.uid : request.auth.uid + '~' + uid;
+        return get(/databases/$(database)/documents/friendships/$(pair)).data.status == 'accepted';
+      }
+      allow get: if registered() && notBanned() && (request.auth.uid == uid || isAdmin() || friends());
+      allow create, update: if registered() && notBanned() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['seen','visible']) && request.resource.data.seen == request.time
+        && request.resource.data.visible is bool;
+    }
+    match /chatLimits/{uid} {
+      allow get: if registered() && request.auth.uid == uid;
+      allow create, update: if canSpeak() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['at','room','messageId']) && request.resource.data.at == request.time
+        && (!exists(/databases/$(database)/documents/chatLimits/$(uid)) || request.time >= resource.data.at + duration.value(3,'s'))
+        && !exists(/databases/$(database)/documents/chatRooms/$(request.resource.data.room)/messages/$(request.resource.data.messageId))
+        && getAfter(/databases/$(database)/documents/chatRooms/$(request.resource.data.room)/messages/$(request.resource.data.messageId)).data.uid == uid
+        && getAfter(/databases/$(database)/documents/chatRooms/$(request.resource.data.room)/messages/$(request.resource.data.messageId)).data.at == request.time;
+    }
+    match /chatRooms/{room}/messages/{id} {
+      allow get: if isAdmin() || (registered() && notBanned() && channelMember(room));
+      allow list: if (isAdmin() || (registered() && notBanned() && channelMember(room))) && request.query.limit <= 50;
+      allow create: if canSpeak() && channelMember(room)
+        && request.resource.data.keys().hasOnly(['uid','name','nameKey','text','at'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time
+        && named(request.auth.uid,request.resource.data.name,request.resource.data.nameKey)
+        && cleanCommunityText(request.resource.data.text)
+        && getAfter(/databases/$(database)/documents/chatLimits/$(request.auth.uid)).data.at == request.time
+        && getAfter(/databases/$(database)/documents/chatLimits/$(request.auth.uid)).data.messageId == id
+        && getAfter(/databases/$(database)/documents/chatLimits/$(request.auth.uid)).data.room == room;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+    match /clanMemberships/{uid} {
+      allow get: if registered() && request.auth.uid == uid;
+      allow create: if registered() && notBanned() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['clanId']) && request.resource.data.clanId is string
+        && uid in getAfter(/databases/$(database)/documents/clans/$(request.resource.data.clanId)).data.members;
+      allow delete: if registered() && request.auth.uid == uid
+        && !(uid in getAfter(/databases/$(database)/documents/clans/$(resource.data.clanId)).data.members);
+    }
+    match /clans/{id} {
+      function shape(r) {
+        return r.keys().hasOnly(['name','nameKey','tag','owner','members','names','nameKeys','createdAt'])
+          && r.name is string && r.name.size() >= 3 && r.name.size() <= 24 && r.nameKey is string && r.nameKey.size() <= 100
+          && r.tag is string && r.tag.size() >= 1 && r.tag.size() <= 4 && r.owner is string
+          && r.members is list && r.members.size() <= 50 && r.members.toSet().size() == r.members.size()
+          && r.names is map && r.nameKeys is map && r.names.keys().hasOnly(r.members) && r.names.keys().hasAll(r.members)
+          && r.nameKeys.keys().hasOnly(r.members) && r.nameKeys.keys().hasAll(r.members) && r.createdAt is timestamp;
+      }
+      function membership() { return /databases/$(database)/documents/clanMemberships/$(request.auth.uid); }
+      allow get: if registered() && notBanned();
+      allow list: if registered() && notBanned() && request.query.limit <= 50;
+      allow create: if registered() && notBanned() && shape(request.resource.data)
+        && request.resource.data.owner == request.auth.uid && request.resource.data.createdAt == request.time
+        && request.resource.data.members == [request.auth.uid]
+        && named(request.auth.uid,request.resource.data.names[request.auth.uid],request.resource.data.nameKeys[request.auth.uid])
+        && !exists(membership()) && getAfter(membership()).data.clanId == id;
+      allow update: if registered() && notBanned() && shape(request.resource.data)
+        && changesOnly(['members','names','nameKeys'])
+        && request.resource.data.names.diff(resource.data.names).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.nameKeys.diff(resource.data.nameKeys).affectedKeys().hasOnly([request.auth.uid])
+        && ((!(request.auth.uid in resource.data.members) && request.resource.data.members == resource.data.members.concat([request.auth.uid])
+          && !exists(membership()) && getAfter(membership()).data.clanId == id
+          && named(request.auth.uid,request.resource.data.names[request.auth.uid],request.resource.data.nameKeys[request.auth.uid]))
+          || (request.auth.uid in resource.data.members && request.resource.data.members == resource.data.members.removeAll([request.auth.uid])
+          && !existsAfter(membership())));
     }
 
     match /socialPrefs/{uid} {
@@ -71,7 +178,9 @@ service cloud.firestore {
       function acceptsRequests(r) {
         let other = r.members[0] == request.auth.uid ? r.members[1] : r.members[0];
         let path = /databases/$(database)/documents/socialPrefs/$(other);
-        return exists(path) && get(path).data.allowRequests == true;
+        let blocks = /databases/$(database)/documents/socialBlocks/$(other);
+        return exists(path) && get(path).data.allowRequests == true
+          && (!exists(blocks) || !(request.auth.uid in get(blocks).data.uids));
       }
       function identity(r) { return reservedName(r,r.members[0]) && reservedName(r,r.members[1]); }
       function stateChange(a,b) {
@@ -104,7 +213,8 @@ service cloud.firestore {
       allow list: if registered() && notBanned() && request.query.limit <= 100 && request.auth.uid in resource.data.visible;
       allow create: if registered() && notBanned() && shape(request.resource.data) && member(request.resource.data)
         && request.resource.data.by == request.auth.uid && request.resource.data.createdAt == request.time
-        && request.resource.data.messages == [] && request.resource.data.seq == 0 && identity(request.resource.data)
+        && request.resource.data.messages == [] && request.resource.data.seq == 0
+        && (request.resource.data.status == 'blocked' ? reservedName(request.resource.data,request.auth.uid) : identity(request.resource.data))
         && ((request.resource.data.status == 'pending' && acceptsRequests(request.resource.data)) || (request.resource.data.status == 'blocked' && request.resource.data.blocked == [request.auth.uid]));
       allow update: if registered() && notBanned() && member(resource.data) && shape(request.resource.data)
         && request.resource.data.members == resource.data.members && request.resource.data.createdAt == resource.data.createdAt

@@ -67,11 +67,9 @@ function setup(member=false){
     for(const k of ['join','reg','play'])assert.equal(act(k),false);
     assert.equal(w.prompts(),3);assert.equal(w.ctx.S.tour,undefined);assert.equal(w.ctx.S.friReg,undefined);
   });
-  await test('private-room browsing works; guest room actions have no effects',async()=>{
-    const w=setup();let act;Object.assign(w.ctx,{ROOM:null,roomTab:'new',openPanel:(...a)=>{act=a.at(-1)}});
-    vm.runInContext('('+extract('openRoom')[0]+')',w.ctx)('new');assert.equal(w.prompts(),0);
-    for(const k of ['create','joincode','inv','start','hstart'])assert.equal(act(k),false);
-    assert.equal(w.prompts(),5);assert.equal(w.ctx.ROOM,null);
+  await test('guest cannot create or join a private room or leave the lobby through its shortcut',async()=>{
+    const w=setup();Object.assign(w.ctx,{LOBBY:{on:true},lbLaunch:()=>assert.fail('guest transition'),onlMenu:()=>assert.fail('guest service')});
+    await vm.runInContext('('+extract('openRoom')[0]+')',w.ctx)();assert.equal(w.prompts(),1);
   });
   await test('guest cannot initialize online services in the background',async()=>{
     const w=setup();await assert.rejects(()=>vm.runInContext('('+extract('onlInit')[0]+')',w.ctx)(),e=>e.code==='session');
