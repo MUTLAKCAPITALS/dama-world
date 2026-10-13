@@ -13,6 +13,12 @@ local one.
 is still correct after a reload. Cloud vs local compares `cloud.saveAt` with the `editAt` that was in
 `localStorage` when the page loaded. Older saves without `editAt` fall back to `savedAt`.
 
+### Upgrading saves from the published version (no `editAt`)
+Saves written by the published version have no `editAt`. When `v29_account.js` loads, it takes
+`editAt` from the original `savedAt`, before the game saves anything during startup, and writes it
+into the stored save right away. So the basis survives a reload even if the server read fails and
+the game saves again (which moves `savedAt`) before the reload.
+
 ### Startup saves vs real progress edits
 `accMark()` runs on every `persist()`. It fingerprints `S` without the changing fields
 (`savedAt`, `editAt`, `unsyncedDirty`):
@@ -73,11 +79,20 @@ The script checks every expectation and **exits 1** if any value differs or the 
 | F | review #3: `QuotaExceededError` while adopting the cloud save | no reload, `accLoadedAt` not set, not synced, cloud 900 untouched |
 | G | review #4: server unreachable, stale cache says older data | cache not trusted, no upload, cloud 900 untouched |
 | H | guest registers a new account | guest progress uploaded to the new account; other accounts untouched |
+| M | **upgrade**: old save 150 (`savedAt` 10000, **no `editAt`**), cloud 900 @20000, read fails, startup default changes + saves (moves `savedAt`), reload, connection returns | basis pinned to 10000 and stored; server stays 900, game restores 900 |
+| M2 | upgrade: old save older than cloud, no failure | 900 / 900 |
+| M3 | upgrade: old save newer than cloud | local wins and is uploaded; uploaded `saveAt` = local `editAt` |
+
+`save_obj(..., legacy=True)` builds a save exactly like the published version's: no `editAt`.
+In M3, `editAt` moves to "now" after local wins, because startup default changes count as an
+unsynced edit and are applied once local wins.
 
 ## Results
-- This branch: **all cases passed** (exit 0).
-- The same tests against the previous commit `4ea6fb5`: **D, F and G fail** (exit 1). In D the 150 is
-  uploaded over the 900.
+- This branch: **all cases passed** (exit 0). The whole suite takes about 10 minutes in
+  software-rendered Chromium, so it was run in two parts: A–H, then M, M2 and M3.
+- Against commit `4ea6fb5`: **D, F and G fail**. In D the 150 is uploaded over the 900.
+- Against commit `ffd973d`: **M fails**. `editAt` is missing, and after the reload the server goes
+  from 900 to 150.
 - The full game regression passed with no errors.
 
 ## Known limit

@@ -10,9 +10,11 @@ BASE = 'http://localhost:8765/'
 CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 FAILS = []
 
-def save_obj(coins, at, **kw):
-    o = {'coins': coins, 'savedAt': at, 'editAt': at, 'name': 'MASTER', 'tutAsked': True,
+def save_obj(coins, at, legacy=False, **kw):
+    """legacy=True: a save written by the published version (no editAt field)."""
+    o = {'coins': coins, 'savedAt': at, 'name': 'MASTER', 'tutAsked': True,
          'settings': {'quality': 'low', 'noIntro': True}}
+    if not legacy: o['editAt'] = at
     o.update(kw); return o
 
 INIT = r"""(seed=>{
@@ -145,8 +147,36 @@ async def case_H(b):
     st = await r.ev("""()=>{let c=null;try{c=JSON.parse(JSON.parse(localStorage.getItem('shim:users/g_guest')).save).coins}catch(e){}return {game:S.coins,newCloud:c,synced:ACC.synced,existing:JSON.parse(JSON.parse(localStorage.getItem('shim:users/u_test')).save).coins}}""")
     r.check('guest progress saved to the new account; other account untouched', st, game=150, newCloud=150, synced=True, existing=900); await r.done()
 
+async def case_M(b):
+    r = Run(b, 'M upgrade: legacy save without editAt, read fails, default changes + save, reload, recovery'); print(r.name)
+    await r.start(REG, save_obj(150, 10000, legacy=True), cloud(900, 20000), {'shim:failGet': '1'})
+    r.check('legacy basis pinned from original savedAt and stored', await r.state(), local=150, localEditAt=10000, cloud=900, synced=False)
+    await r.ev("S.settings.vol=0.9;S.someNewDefault=1;persist();persist()")   # startup-style default changes + saves
+    st = await r.state()
+    r.check('saves during startup keep the pinned basis', st, local=150, localEditAt=10000, cloud=900)
+    sv = await r.ev("JSON.parse(localStorage.getItem('damaworld.v1')).savedAt")
+    r.check('savedAt did move (so the old fallback would have been wrong)', {'moved': sv > 20000}, moved=True)
+    await r.reload()
+    r.check('after reload (still offline)', await r.state(), game=150, localEditAt=10000, cloud=900, synced=False)
+    await r.ev("localStorage.removeItem('shim:failGet');accSync()"); await r.settle()
+    r.check('connection back: server stays 900, game restores 900', await r.state(), game=900, cloud=900, synced=True); await r.done()
+
+async def case_M2(b):
+    r = Run(b, 'M2 upgrade: legacy save older than cloud, no failure'); print(r.name)
+    await r.start(REG, save_obj(150, 10000, legacy=True), cloud(900, 20000))
+    r.check('cloud wins', await r.state(), game=900, cloud=900, synced=True); await r.done()
+
+async def case_M3(b):
+    r = Run(b, 'M3 upgrade: legacy save newer than cloud'); print(r.name)
+    now = int(time.time() * 1000)
+    await r.start(REG, save_obj(500, now - 60000, legacy=True), cloud(900, 20000))
+    st = await r.state()
+    r.check('local wins and uploads', st, game=500, cloud=500, synced=True)
+    r.check('uploaded saveAt matches local editAt, not older than the legacy savedAt',
+            {'consistent': st['cloudAt'] == st['localEditAt'] and st['localEditAt'] >= now - 60000}, consistent=True); await r.done()
+
 CASES = {'A': case_A, 'B': case_B, 'C': case_C, 'D': case_D, 'E1': lambda b: case_E(b, False),
-         'E2': lambda b: case_E(b, True), 'F': case_F, 'G': case_G, 'H': case_H}
+         'E2': lambda b: case_E(b, True), 'F': case_F, 'G': case_G, 'H': case_H, 'M': case_M, 'M2': case_M2, 'M3': case_M3}
 
 async def main():
     async with async_playwright() as p:

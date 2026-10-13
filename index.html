@@ -4704,7 +4704,13 @@ const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,sy
 /* أساس المقارنة: editAt = وقت آخر تعديل حقيقي للتقدم، وينحفظ مع التقدم فيبقى صحيح بعد إعادة التشغيل.
    ما يتحرك وقت التشغيل ولا وقت ما يكون الحساب مو متزامن مع السيرفر. (الحفظات القديمة بدون editAt: نستخدم savedAt) */
 const ACC_KEY='damaworld.v1',ACC_PEND='acc.pendingRestore';
-ACC.bootLocalAt=(()=>{try{const v=JSON.parse(localStorage.getItem(ACC_KEY)||'{}');return +(v.editAt!=null?v.editAt:v.savedAt)||0}catch(e){return 0}})();
+/* ترحيل الحفظ القديم (قبل editAt): نثبّت الأساس من savedAt الأصلي الحين — قبل أي حفظ أثناء التشغيل —
+   ونكتبه بالتخزين فوراً عشان يصمد لو انعادت الصفحة قبل ما نقرأ السيرفر */
+ACC.bootLocalAt=(()=>{let v=null,raw=null;try{raw=localStorage.getItem(ACC_KEY);v=raw?JSON.parse(raw):null}catch(e){v=null}
+  if(!v)return 0;
+  if(v.editAt==null){v.editAt=+v.savedAt||0;try{localStorage.setItem(ACC_KEY,JSON.stringify(v))}catch(e){}}
+  return +v.editAt||0})();
+if(S.editAt==null)S.editAt=ACC.bootLocalAt;
 /* بصمة محتوى التقدم بدون الحقول المتغيرة — عشان نفرّق بين "حفظ بدون تغيير" و"تعديل حقيقي" */
 function accFp(){const a=S.savedAt,b=S.editAt,c=S.unsyncedDirty;S.savedAt=0;S.editAt=0;delete S.unsyncedDirty;let js='';try{js=JSON.stringify(S)}catch(e){}S.savedAt=a;S.editAt=b;if(c)S.unsyncedDirty=c;return js}
 ACC.lastFp=accFp();
