@@ -60,7 +60,7 @@ function sqtApplyWorld(){if(!SOUQT.on||!W||W.theme.key!=='kw'||!SOUQT.data)retur
   const d=SOUQT.data;
   for(const b of d.boxes){const [x0,x1,z0,z1,h]=b;addBox((x0+x1)/2,(z0+z1)/2,x1-x0,z1-z0,h)}
   const R=sqtRect();W.zones=W.zones.filter(z=>!/^souqtest/.test(z.id)).concat([{id:'souqtest',name:'شارع المباركية (تجربة)',rect:R,spawn:[d.spawn[0],0,d.spawn[1]],col:'#c9a36a'},
-    {id:'souqtest_out',name:'المباركية من الخارج (تجربة)',rect:R,spawn:[(d.rect[0]+d.rect[1])/2,0,d.rect[2]-6],col:'#c9a36a'}]);
+    {id:'souqtest_out',name:'المباركية من الخارج (تجربة)',rect:R,spawn:[(d.rect[0]+d.rect[1])/2,0,d.rect[2]-11],col:'#c9a36a'}]);
   if(!SOUQT.group)SOUQT.group=sqtBuild();
   W.root.add(SOUQT.group)}
 /* raised shop floors and platforms */
