@@ -4,6 +4,7 @@ import bpy, math, os
 from mathutils import Vector
 import lib
 
+BY = 60.0     # material board sits well away from the building so no elevation camera sees it
 OUT = r'C:\Users\LENOVO\Documents\DAMA_WORLD\souq_v4\renders'
 
 def look_at(o, target):
@@ -33,7 +34,7 @@ def cameras():
         'roof':    (camera('CAM_RoofEdge', (3.6, -2.6, 6.6), (1.9, 0.0, 7.5), 40, c=c), (1400, 1000)),
         'shop':    (camera('CAM_SpiceShop', (-2.05, -2.7, 1.5), (-3.8, 1.8, 1.35), 26, c=c), (1400, 1000)),
         'base':    (camera('CAM_WallBase', (-7.3, -2.0, 1.0), (-5.6, 0.4, 0.75), 40, c=c), (1400, 1000)),
-        'board':   (camera('CAM_MaterialBoard', (40, -9, 3.2), (40, 0, 1.0), ortho=13.0, c=c), (2000, 800)),
+        'board':   (camera('CAM_MaterialBoard', (40, BY - 9, 3.2), (40, BY, 1.0), ortho=13.0, c=c), (2000, 800)),
     }
 
 def sky_types():
@@ -168,13 +169,13 @@ def material_board(M):
     for i, (k, label) in enumerate(keys):
         bm = bmesh.new(); vs, _ = lib.bm_box(bm, -.45, .45, -.45, .45, 0.3, 1.9)
         lib.set_rand_attr(bm, vs, 1.0 if i % 2 else 0.0)
-        o = lib.from_bm('Swatch_' + k, bm, c, M[k]); o.location = (x0 + i * 1.05, 0, 0)
+        o = lib.from_bm('Swatch_' + k, bm, c, M[k]); o.location = (x0 + i * 1.05, BY, 0)
         lib.uv_box(o)
         lib.bevel(o, .04, 3)
         s = o.modifiers.new('Density', 'SUBSURF'); s.subdivision_type = 'SIMPLE'; s.levels = s.render_levels = 4
         cu = bpy.data.curves.new('Label_' + k, 'FONT'); cu.body = label; cu.size = .13; cu.align_x = 'CENTER'
         t = bpy.data.objects.new('Label_' + k, cu); c.objects.link(t)
-        t.location = (x0 + i * 1.05, -.5, 0.08); t.rotation_euler = (math.radians(90), 0, 0)
+        t.location = (x0 + i * 1.05, BY - .5, 0.08); t.rotation_euler = (math.radians(90), 0, 0)
         t.data.materials.append(M['clay'])
-    bm = bmesh.new(); lib.bm_box(bm, 30, 50, .6, .8, -1, 4); lib.bm_box(bm, 30, 50, -3, .8, -.02, 0)
+    bm = bmesh.new(); lib.bm_box(bm, 30, 50, BY + .6, BY + .8, -1, 4); lib.bm_box(bm, 30, 50, BY - 3, BY + .8, -.02, 0)
     back = lib.from_bm('Board_Backdrop', bm, c, M['clay'])
