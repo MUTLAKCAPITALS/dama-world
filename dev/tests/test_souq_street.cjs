@@ -35,12 +35,17 @@ await test('the street test is off unless the URL asks for it, and the normal ga
   t.buildWorld('kw');assert.equal(t.groundY(0,150),.12);assert.equal(t.souqCeil(0,150),0);
   const p={x:0,z:500};t.resolve(p,.33);assert.equal(p.z,108,'normal world bounds still apply');
   assert.equal(t.W.boxes.length,0)});
-await test('models load next to the page, or from jsDelivr on a commit-pinned githack preview',()=>{
-  const c=u=>{const x=vm.createContext({location:new URL(u)});vm.runInContext(block().match(/function sqtBase\(\)\{[\s\S]*?\n.*?\n.*?'models\/souq\/'\}/)[0]+';this.b=sqtBase()',x);return x.b};
+await test('models load next to the page, or from one pinned jsDelivr copy on githack previews, and that copy matches this tree',()=>{
+  const src=block().match(/const SOUQ_ASSET_REF[\s\S]*?'models\/souq\/'\}/)[0];
+  const c=u=>{const x=vm.createContext({location:new URL(u)});vm.runInContext(src+';this.b=sqtBase()',x);return x.b};
+  const ref=/SOUQ_ASSET_REF='([0-9a-f]+)'/.exec(src)[1];
   assert.equal(c('https://x.web.app/?souqtest'),'models/souq/');
-  assert.equal(c('https://raw.githack.com/MUTLAKCAPITALS/dama-world/d7237d4/index.html?souqtest=1'),'https://cdn.jsdelivr.net/gh/MUTLAKCAPITALS/dama-world@d7237d4/models/souq/');
-  assert.equal(c('https://raw.githack.com/MUTLAKCAPITALS/dama-world/feat/souq-hero-v4/index.html?souqtest'),'models/souq/');
-  assert.equal(c('https://x/?souqtest&souqbase=https%3A%2F%2Fcdn%2Fm'),'https://cdn/m/')});
+  assert.equal(c('https://raw.githack.com/MUTLAKCAPITALS/dama-world/0e1a2cf/index.html?souqtest=1'),'https://cdn.jsdelivr.net/gh/MUTLAKCAPITALS/dama-world@'+ref+'/models/souq/');
+  assert.equal(c('https://x/?souqtest&souqbase=https%3A%2F%2Fcdn%2Fm'),'https://cdn/m/');
+  const {execFileSync}=require('node:child_process');let same=0;
+  for(const f of fs.readdirSync(root+'/models/souq')){let old;try{old=execFileSync('git',['show',ref+':models/souq/'+f],{cwd:root,maxBuffer:64<<20})}catch(e){if(/not a git repository|unknown revision/.test(String(e.stderr||e)))return;throw new Error('models/souq/'+f+' is not in '+ref+': update SOUQ_ASSET_REF')}
+    assert(Buffer.compare(old,fs.readFileSync(root+'/models/souq/'+f))===0,'models/souq/'+f+' differs from '+ref+': commit the models, then point SOUQ_ASSET_REF at that commit');same++}
+  assert(same>=9,'all street files checked')});
 await test('?souqtest turns it on (query or hash)',()=>{
   assert.equal(ctx('https://x/?souqtest=1').SOUQT.on,true);assert.equal(ctx('https://x/#souqtest').SOUQT.on,true)});
 await test('collision, raised shop floors, ceilings and the test zone are applied to the Kuwait world only',async()=>{
