@@ -6146,22 +6146,25 @@ function sqtLoad(){if(SOUQT.pending)return SOUQT.pending;SOUQT.stats.t0=performa
    .then(()=>{SOUQT.stats.ready=Math.round(performance.now()-SOUQT.stats.t0)},e=>{SOUQT.stats.errors.push(String(e&&e.message||e));console.warn('souq test load failed',e)});
   return SOUQT.pending}
 /* one THREE.LOD per building: LOD0 near, LOD1 (decimated, same atlas) beyond SOUQT.lod1 metres */
-function sqtBuild(){const root=new THREE.Group();root.name='souqTest';const maxAniso=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+function sqtBuild(){const root=new THREE.Group();root.name='souqTest';
+  /* the GLBs are in Blender street coordinates; the street sits at origin[2] metres south in the game */
+  const geo=new THREE.Group();geo.name='souqGeo';const o=(SOUQT.data&&SOUQT.data.origin)||[0,0,150];geo.position.set(o[0],o[1],o[2]);root.add(geo);const maxAniso=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   let t0=0,t1=0;
   for(const n of SOUQT.files){const g=SOUQT.gltf[n];if(!g)continue;const parts={};
     g.scene.traverse(o=>{if(!o.isMesh)return;const k=/LOD1/.test(o.name)?'lod1':/GLASS/i.test(o.name)?'glass':/EMIT/i.test(o.name)?'emit':'lod0';(parts[k]=parts[k]||[]).push(o)});
     const prep=(m,shadow)=>{m.updateMatrixWorld(true);const mesh=new THREE.Mesh(m.geometry,m.material);mesh.applyMatrix4(m.matrixWorld);mesh.castShadow=shadow;mesh.receiveShadow=shadow;
       GC['souq:'+n+':'+m.uuid]=m.geometry;const ma=m.material;
-      if(ma.map){ma.map.anisotropy=maxAniso;ma.map.needsUpdate=true}if(ma.normalMap)ma.normalMap.anisotropy=maxAniso;
+      /* the game renders without sRGB output, like its own hex-colour materials, so the baked colour stays linear */
+      if(ma.map){ma.map.encoding=THREE.LinearEncoding;ma.map.anisotropy=maxAniso;ma.map.needsUpdate=true}if(ma.normalMap)ma.normalMap.anisotropy=maxAniso;
       if(ma.isMeshStandardMaterial&&!ma.transparent){ma.envMapIntensity=.55;ma.metalness=0;if(n!=='street'&&n!=='heroprops')ma.side=THREE.FrontSide}
       if(ma.transparent){ma.depthWrite=false;mesh.renderOrder=2}
       return mesh};
     if(parts.lod0){const lod=new THREE.LOD();const a=new THREE.Group();for(const m of parts.lod0){a.add(prep(m,true));t0+=(m.geometry.index?m.geometry.index.count:m.geometry.attributes.position.count)/3}
       lod.addLevel(a,0);
       if(parts.lod1){const b=new THREE.Group();for(const m of parts.lod1){b.add(prep(m,true));t1+=(m.geometry.index?m.geometry.index.count:m.geometry.attributes.position.count)/3}lod.addLevel(b,SOUQT.lod1)}
-      lod.name='souq_'+n;root.add(lod)}
-    for(const m of (parts.glass||[]))root.add(prep(m,false));
-    for(const m of (parts.emit||[])){const me=prep(m,false);if(me.material.emissive)me.material.emissiveIntensity=NIGHT?2.2:.9;root.add(me)}}
+      lod.name='souq_'+n;geo.add(lod)}
+    for(const m of (parts.glass||[]))geo.add(prep(m,false));
+    for(const m of (parts.emit||[])){const me=prep(m,false);if(me.material.emissive)me.material.emissiveIntensity=NIGHT?2.2:.9;geo.add(me)}}
   /* sand around the test block so nothing floats over the void */
   const r=sqtRect();if(r){const sand=new THREE.Mesh(new THREE.PlaneGeometry(r[1]-r[0]+60,r[3]-r[2]+60),pbr('souqSand',{color:'#c9b08a',roughness:1}));
     sand.rotation.x=-Math.PI/2;sand.position.set((r[0]+r[1])/2,-.03,(r[2]+r[3])/2);sand.receiveShadow=true;root.add(sand);GC['souq:sand']=sand.geometry}
@@ -6190,7 +6193,8 @@ window.souqTestReport=function(){const f=SQ_PERF.frames.slice().sort((a,b)=>a-b)
     jsHeapMB:performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576):null,pixelRatio:renderer.getPixelRatio(),
     load:SOUQT.stats,boxes:SOUQT.data?SOUQT.data.boxes.length:0}};
 if(SOUQT.on){sqtLoad();
-  const _sqtLoop=loop;loop=function(){sqtPerfTick();return _sqtLoop.apply(this,arguments)};
+  /* own frame clock: the game's loop is already wrapped elsewhere, so measure real presented frames */
+  if(typeof requestAnimationFrame==='function'){const tick=()=>{sqtPerfTick();requestAnimationFrame(tick)};requestAnimationFrame(tick)}
   const iv=setInterval(()=>{if(SOUQT.arrived){clearInterval(iv);return}if(SOUQT.data&&W&&W.theme.key==='kw'&&mode==='explore'&&player.ch){sqtApplyWorld();sqtGo()}},500)}
 /* ================= end Mubarakiya street test ================= */
 
