@@ -129,9 +129,10 @@ def pole_row(bm, x0, x1, z, y_out=0.0, y_in=6.0, spacing=.42, ends=None):
         lib.set_rand_attr(bm, r0 + r1, R.random())
         if ends is not None: ends.append((x, z))
 
-def glazed_shopfront(c, M, name, x0, x1, z0, z1, y, paint='shopgreen'):
-    """Old-style timber shopfront: frame, transom, mullions, pair of glazed doors with kick panels, glass."""
-    fr = bmesh.new(); gl = bmesh.new()
+def glazed_shopfront(c, M, name, x0, x1, z0, z1, y, paint='shopgreen', open_doors=True):
+    """Old-style timber shopfront: frame, transom, mullions, pair of glazed doors with kick panels, glass.
+    The doors stand open (hinged inward) so players can walk into the shop."""
+    fr = bmesh.new(); gl = bmesh.new(); br = bmesh.new()
     t0, t1 = y, y + .12
     def piece(a, b, c0, c1, ya=t0, yb=t1):
         vs, _ = lib.bm_box(fr, a, b, ya, yb, c0, c1); lib.set_rand_attr(fr, vs, R.random())
@@ -141,17 +142,22 @@ def glazed_shopfront(c, M, name, x0, x1, z0, z1, y, paint='shopgreen'):
     w = x1 - x0; mid = (x0 + x1) / 2
     for k in (1, 2):                                  # transom bars
         xx = x0 + w * k / 3; piece(xx - .02, xx + .02, zt, z1 - .09)
-    # doors: two leaves, each with a kick panel and glass above
-    for a, b in ((x0 + .09, mid - .004), (mid + .004, x1 - .09)):
-        piece(a, a + .07, z0, zt - .07, t0 + .02, t0 + .07); piece(b - .07, b, z0, zt - .07, t0 + .02, t0 + .07)
-        piece(a, b, z0, z0 + .55, t0 + .02, t0 + .07); piece(a, b, z0 + .55, z0 + .62, t0 + .015, t0 + .075)
-        piece(a, b, zt - .14, zt - .07, t0 + .02, t0 + .07)
-        piece(a + .07, b - .07, z0 + .08, z0 + .47, t0 + .03, t0 + .06)     # raised kick panel
-        xm = (a + b) / 2; piece(xm - .015, xm + .015, z0 + .62, zt - .14, t0 + .03, t0 + .06)
-        lib.bm_box(gl, a + .07, b - .07, t0 + .044, t0 + .048, z0 + .62, zt - .14)
-    lib.bm_box(gl, x0 + .09, x1 - .09, t0 + .044, t0 + .048, zt, z1 - .09)
-    fo = lib.from_bm(name + '_Frame', fr, c, M[paint]); lib.uv_box(fo); lib.bevel(fo, .004, 2)
-    go = lib.from_bm(name + '_Glass', gl, c, M['shopglass']); go.visible_shadow = False
+    # doors: two leaves, each with a kick panel and glass above; hinged at the jambs, opened inward
+    ang = 82 if open_doors else 0
+    for (a, b), left in (((x0 + .09, mid - .004), True), ((mid + .004, x1 - .09), False)):
+        lw = b - a
+        m = (T(a, 0, 0) @ RZ(ang)) if left else (T(b, 0, 0) @ RZ(-ang) @ T(-lw, 0, 0))
+        def lp(u0, u1, c0, c1, ya, yb, bmx=fr, glass=False):
+            vs, _ = lib.bm_box(bmx, u0, u1, ya, yb, c0, c1, m=m)
+            if not glass: lib.set_rand_attr(bmx, vs, R.random())
+        lp(0, .07, z0, zt - .07, t0 + .02, t0 + .07); lp(lw - .07, lw, z0, zt - .07, t0 + .02, t0 + .07)
+        lp(0, lw, z0, z0 + .55, t0 + .02, t0 + .07); lp(0, lw, z0 + .55, z0 + .62, t0 + .015, t0 + .075)
+        lp(0, lw, zt - .14, zt - .07, t0 + .02, t0 + .07)
+        lp(.07, lw - .07, z0 + .08, z0 + .47, t0 + .03, t0 + .06)              # raised kick panel
+        lp(lw / 2 - .015, lw / 2 + .015, z0 + .62, zt - .14, t0 + .03, t0 + .06)
+        lp(.07, lw - .07, z0 + .62, zt - .14, t0 + .044, t0 + .048, gl, True)
+        hx = lw - .06 if left else .06                                            # brass pull on each leaf
+        lp(hx - .012, hx + .012, z0 + .95, z0 + 1.25, t0 - .02, t0 + .0, br)
     # brass handles
     br = bmesh.new()
     for xx in (mid - .06, mid + .06):
@@ -322,7 +328,7 @@ def building_B(c, M):
     i_ = lib.from_bm('B_SpoutStraps', ir, c, M['iron']); lib.uv_box(i_)
     # stains: under spouts and pole ends
     q = [(sx - .3, sx + .3, H - 2.2, H) for sx in (x0 + 2.4, x1 - 2.4)]
-    q += [(x - .07, x + .07, z - R.uniform(.3, .6), z - .02) for (x, z) in ends]
+    q += [(x - .07, x + .07, z - R.uniform(.2, .3), z - .02) for (x, z) in ends]
     decal_set(c, M, 'Decal_B_Drips', q)
     # goods outside the dates shop, a bench in the walkway
     sk = bmesh.new()
@@ -656,18 +662,23 @@ def palm(c, M, name, x, y, z, h=2.8, n=22):
     tr = bmesh.new(); fr = bmesh.new()
     uvl = fr.loops.layers.uv.new('UVMap')
     lean = R.uniform(-4, 4)
-    segs = 24
+    segs = 34
     for s_ in range(segs):                       # trunk: stacked leaf-base rings
         z0 = z + h * s_ / segs; z1 = z + h * (s_ + 1) / segs
         r = .16 - .03 * s_ / segs
         n0 = len(tr.verts)
-        lib.bm_lathe(tr, (x, y, z0), [(r * .9, 0), (r * 1.12, (z1 - z0) * .6), (r * .93, z1 - z0)], 10, cap_top=False, cap_bottom=False)
+        lib.bm_lathe(tr, (x, y, z0), [(r * .97, 0), (r * 1.05, (z1 - z0) * .55), (r * .98, z1 - z0)], 9, cap_top=False, cap_bottom=False)
         tr.verts.ensure_lookup_table()
-        for v in tr.verts[n0:]: v.co = Matrix.Rotation(s_ * .5, 4, 'Z') @ (v.co - Vector((x, y, 0))) + Vector((x, y, 0))
-    top = Vector((x, y, z + h))
-    for k in range(n):
+        bend = Vector((math.sin(math.radians(lean)) * (z0 - z) ** 2 * .06, 0, 0))
+        for v in tr.verts[n0:]: v.co = Matrix.Rotation(s_ * .35, 4, 'Z') @ (v.co - Vector((x, y, 0))) + Vector((x, y, 0)) + bend
+    top = Vector((x, y, z + h)) + Vector((math.sin(math.radians(lean)) * h * h * .06, 0, 0))
+    for k in range(10):                                   # cut frond bases (boots) around the crown
+        az = 2 * math.pi * k / 10 + .3
+        d = Vector((math.cos(az), math.sin(az), 0))
+        lib.bm_cyl(tr, top - Vector((0, 0, .25 + .06 * (k % 3))), top - Vector((0, 0, .1)) + d * .2 + Vector((0, 0, .12)), .035, 5)
+    for k in range(n + 6):
         az = 2 * math.pi * k / n + R.uniform(-.15, .15)
-        tilt = math.radians(R.uniform(15, 70) if k % 2 else R.uniform(35, 95))
+        tilt = math.radians(R.uniform(15, 70) if k % 2 else R.uniform(35, 95)) if k < n else math.radians(R.uniform(100, 125))
         L = R.uniform(1.2, 1.55)
         dirv = Vector((math.cos(az), math.sin(az), 0))
         prev = None
@@ -680,10 +691,11 @@ def palm(c, M, name, x, y, z, h=2.8, n=22):
             if 0 < sidx < steps:
                 side = dirv.cross(Vector((0, 0, 1))).normalized()
                 ll = .42 * math.sin(math.pi * min(1, t * 1.15)) + .06
-                for sgn in (-1, 1):
-                    q0 = p; q1 = p + side * sgn * ll * .25 + Vector((0, 0, .02)) + dirv * .06
-                    q2 = p + side * sgn * ll + Vector((0, 0, -.06)) + dirv * .12
-                    q3 = p + dirv * .1
+                for kk, sgn in enumerate((-1, 1, -1, 1) if sidx % 2 else (-1, 1)):
+                    pp = p + dirv * (.035 * (kk % 2))
+                    q0 = pp; q1 = pp + side * sgn * ll * .25 + Vector((0, 0, .02)) + dirv * .06
+                    q2 = pp + side * sgn * ll + Vector((0, 0, -.06)) + dirv * .12
+                    q3 = pp + dirv * .1
                     vs = [fr.verts.new(v) for v in (q0, q1, q2, q3)]
                     f = fr.faces.new(vs)
                     for l_, uvv in zip(f.loops, ((t, 0), (t, .3), (t, 1), (t, .1))): l_[uvl].uv = uvv
@@ -692,7 +704,7 @@ def palm(c, M, name, x, y, z, h=2.8, n=22):
             prev = p
     to = lib.from_bm(name + '_Trunk', tr, c, M['trunk'], smooth=True); lib.uv_box(to)
     fo = lib.from_bm(name + '_Fronds', fr, c, M['frond'], smooth=True)
-    s = fo.modifiers.new('Solid', 'SOLIDIFY'); s.thickness = .003
+    M['frond'].use_backface_culling = False          # one-sided leaflets, rendered double-sided
 
 def furniture(c, M):
     pl = bmesh.new(); cap = bmesh.new(); bench = bmesh.new(); bi = bmesh.new()
@@ -726,7 +738,7 @@ def end_block(c, M, tag, mat='plaster_w', wing=None):
     sh = bmesh.new()
     solids = [(0, W, 0, D, 0, H), (0, W, 0, .4, H, P), (0, W, D - .4, D, H, P), (0, .4, .4, D - .4, H, P), (W - .4, W, .4, D - .4, H, P)]
     if wing: solids.append(wing)
-    holes = [(px0, px1, -1, D + 1, -1, 3.4), (px0 - .3, px1 + .3, -1, .6, 3.4, 3.65),
+    holes = [(px0, px1, -1, D - .45, -1, 3.4), (px0 - .3, px1 + .3, -1, .6, 3.4, 3.65), (px0 + .9, px1 - .9, D - .5, D + 1, 0, 2.5),
              (4.0, 4.9, -1, .6, 4.3, 5.4), (16.1, 17.0, -1, .6, 4.3, 5.4)]
     lib.shell(sh, solids, holes)
     so = lib.from_bm(tag + '_Shell', sh, c, [M[mat]]); lib.uv_box(so, arch=True); lib.plaster_mods(so, .035, 2, .01)
@@ -750,6 +762,18 @@ def end_block(c, M, tag, mat='plaster_w', wing=None):
     lib.set_rand_attr(fl, list(fl.verts), .3)
     fo = lib.from_bm(tag + '_PassageFloor', fl, c, M['paver']); lib.uv_box(fo)
     hanging_lantern(c, M, tag + '_PassageLantern', (px0 + px1) / 2, D / 2, 3.38, .45)
+    # far end of the passage: a studded double door, closed (the souq continues behind it)
+    dr = bmesh.new(); st = bmesh.new()
+    a, b = px0 + .9, px1 - .9
+    for vs in (lib.bm_box(dr, a, a + .1, D - .62, D - .42, 0, 2.5)[0], lib.bm_box(dr, b - .1, b, D - .62, D - .42, 0, 2.5)[0], lib.bm_box(dr, a, b, D - .62, D - .42, 2.4, 2.5)[0]):
+        lib.set_rand_attr(dr, vs, R.random())
+    hero.panel_leaf(dr, (b - a - .2) / 2, 2.38, t=.05, m=T(a + .1, D - .5, .02))
+    hero.panel_leaf(dr, (b - a - .2) / 2, 2.38, t=.05, m=T((a + b) / 2, D - .5, .02))
+    for zz in (.45, 1.2, 1.95):
+        for xx in (a + .25, (a + b) / 2 - .12, (a + b) / 2 + .12, b - .25):
+            lib.bm_dome(st, (xx, D - .501, zz), .014, .01, (0, -1, 0), 8, 3)
+    do = lib.from_bm(tag + '_EndDoor', dr, c, M['teak']); lib.uv_box(do); lib.bevel(do, .004, 2)
+    so = lib.from_bm(tag + '_EndDoorStuds', st, c, M['iron'], smooth=True); lib.uv_box(so)
 
 # ------------------------------------------------------------------ build all
 def build(M0):
