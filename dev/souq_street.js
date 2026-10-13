@@ -45,14 +45,18 @@ function sqtLoad(){if(SOUQT.pending)return SOUQT.pending;SOUQT.stats.t0=performa
      walls and undersides (arcade ceilings, pergola undersides), weakest on the floor itself;
    both are multiplied by the baked sky-visibility (AO) map, so corners, arcades, passages and shop
    interiors stay darker than the open street. Direct sun and the beam shadows are not changed. */
-const SQ_LIGHT={kSky:{value:.5},kBounce:{value:.3},sky:{value:THREE.Color?new THREE.Color():null},bounce:{value:THREE.Color?new THREE.Color():null}};
+const SQ_LIGHT={kSky:{value:.6},kBounce:{value:.45},aoBounce:{value:.35},aoGame:.6,sky:{value:THREE.Color?new THREE.Color():null},bounce:{value:THREE.Color?new THREE.Color():null}};
 function sqtLightTick(){if(!SQ_LIGHT.sky.value)return;if(typeof hemi!=='undefined'&&hemi)SQ_LIGHT.sky.value.copy(hemi.color).multiplyScalar(hemi.intensity/.42);
   if(typeof sun!=='undefined'&&sun)SQ_LIGHT.bounce.value.copy(sun.color).multiplyScalar(Math.min(1.2,sun.intensity/2))}
-function sqtFill(ma){if(ma.userData.sqFill)return;ma.userData.sqFill=true;ma.aoMapIntensity=1;
-  ma.onBeforeCompile=sh=>{sh.uniforms.sqSky=SQ_LIGHT.sky;sh.uniforms.sqBounce=SQ_LIGHT.bounce;sh.uniforms.sqKSky=SQ_LIGHT.kSky;sh.uniforms.sqKB=SQ_LIGHT.kBounce;
-    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 sqSky;uniform vec3 sqBounce;uniform float sqKSky;uniform float sqKB;')
-      .replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n{vec3 nW=inverseTransformDirection(normal,viewMatrix);float up=nW.y*.5+.5;\n reflectedLight.indirectDiffuse+=material.diffuseColor*(sqSky*sqKSky*up+sqBounce*sqKB*(.6-.4*nW.y));}')};
-  ma.customProgramCacheKey=()=>'souqfill1';ma.needsUpdate=true}
+/* tuned in the game (street view, arcade, spice shop): before mean brightness 40/255 with 69% of the frame near black;
+   after 65/255 and 19%, shop interiors stay darker than the street. The baked sky visibility (AO) fully scales the
+   sky fill, only lightly scales the bounce (the occluding walls are where the bounce comes from), and scales the
+   game's own ambient to 60%. Added after the AO step so each term gets its own share. */
+function sqtFill(ma){if(ma.userData.sqFill)return;ma.userData.sqFill=true;ma.aoMapIntensity=SQ_LIGHT.aoGame;
+  ma.onBeforeCompile=sh=>{sh.uniforms.sqSky=SQ_LIGHT.sky;sh.uniforms.sqBounce=SQ_LIGHT.bounce;sh.uniforms.sqKSky=SQ_LIGHT.kSky;sh.uniforms.sqKB=SQ_LIGHT.kBounce;sh.uniforms.sqAoB=SQ_LIGHT.aoBounce;
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 sqSky;uniform vec3 sqBounce;uniform float sqKSky;uniform float sqKB;uniform float sqAoB;')
+      .replace('#include <aomap_fragment>','#include <aomap_fragment>\n{float sqAO=1.;\n#ifdef USE_AOMAP\n sqAO=texture2D(aoMap,vUv2).r;\n#endif\n vec3 nW=inverseTransformDirection(normal,viewMatrix);float up=nW.y*.5+.5;\n reflectedLight.indirectDiffuse+=material.diffuseColor*(sqSky*sqKSky*up*sqAO+sqBounce*sqKB*(.6-.4*nW.y)*mix(1.,sqAO,sqAoB));}')};
+  ma.customProgramCacheKey=()=>'souqfill2';ma.needsUpdate=true}
 /* one THREE.LOD per building: LOD0 near, LOD1 (decimated, same atlas) beyond SOUQT.lod1 metres */
 function sqtBuild(){const root=new THREE.Group();root.name='souqTest';
   /* the GLBs are in Blender street coordinates; the street sits at origin[2] metres south in the game */
