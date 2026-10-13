@@ -9,14 +9,16 @@ User authorized implementation and publication after verification. Use free Fire
 - The original patch remains recoverable from that checkpoint commit. The patch artifact is removed from the implementation tree.
 - Base production release was 7faf31fb85ae6bb86e3cd88eb4972ece506906fc (PR9 community release).
 - Voice is implemented in dev/voice.js and embedded exactly in index.html. Complete rules are in firestore.rules; owner moderation is in admin.html.
-- Voice is NOT DEPLOYED until complete rules publication and successful main/Pages deployment are explicitly recorded below.
+- Full CI passed for implementation ad3c9fb6395fb9a3e55b72963a0173af19f02fdf: https://github.com/MUTLAKCAPITALS/dama-world/actions/runs/38387664700 . All 430 checks passed (236 frontend, 184 rules, 10 native media).
+- Complete rules were published in the existing dama-world Firebase console at 2026-10-13 14:06 Asia/Kuwait, before game deployment. The old rules matched the tested base exactly; only the voice rules were added.
+- Release PR: https://github.com/MUTLAKCAPITALS/dama-world/pull/10 . Read its current merge state and the matching Pages run before reporting game deployment. Do not assume it is unmerged from this pre-merge checkpoint.
 - Current working copy: /workspace/scratch/e712d1f439da/dama-world. Local files may expire; GitHub is authoritative.
 
 ## Verification
 
 - 236 frontend checks passed after restoring and applying the exact checkpoint patch.
 - 184 Firestore emulator checks passed: 67 existing rules, 52 social, 41 community, 24 voice.
-- Required native media suite dev/firebase/test_voice_media.cjs uses @roamhq/wrtc 0.10.0, independent Firebase emulator clients, synthetic PCM sources and decoded sinks. It must pass in existing GitHub Actions CI (Node22/Java21) before release.
+- Required native media suite dev/firebase/test_voice_media.cjs uses @roamhq/wrtc 0.10.0, independent Firebase emulator clients, synthetic PCM sources and decoded sinks. It passed all 10 native media checks in GitHub Actions (Node22/Java21), including two-way world audio, three-player mesh, mic-off silence, reopen, moderation, cleanup and private-match media.
 - The earlier local native media attempt produced zero ICE candidates even in a minimal standalone PC; it was NOT a pass. Do not weaken or bypass the required media suite.
 - Native media is not physical browser acceptance. Two real separately signed-in browsers/devices, Safari permission/autoplay, mobile networks, speaker echo and the 3D UI have not been verified. Earlier cloud Chrome could not initialize WebGL.
 
@@ -30,7 +32,7 @@ User authorized implementation and publication after verification. Use free Fire
 
 ## Remaining release steps
 
-1. Run the implementation PR through full GitHub Actions CI, including actual decoded media. Fix concrete failures and retain existing regression coverage.
-2. Publish complete tested firestore.rules using the existing Firebase owner console session. Do not expose credentials.
-3. Merge after CI succeeds, verify GitHub Pages publishes the same source, and inspect game/owner panel.
-4. Record exact run/commit/deployment evidence and any remaining real-device limitations. Provide current game link and complete rules source.
+1. Full implementation CI and complete rules publication are done. No application code changed after the successful run.
+2. Merge PR10 once its current CI is green (the evidence-only documentation update reruns CI), then verify its Pages deployment and inspect the live game/owner panel.
+3. If PR10 is already merged and Pages successful, continue from that release; do not republish or reapply the original patch unnecessarily.
+4. Two real devices/browsers still require manual acceptance. Provide the live game link and complete rules source, without claiming device acceptance.
