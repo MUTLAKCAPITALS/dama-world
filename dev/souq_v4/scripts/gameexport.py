@@ -71,13 +71,75 @@ def light_mesh(o):
     me.transform(o.matrix_world)
     return me
 
+RAND_ATTR = 'objrand'
+
+def object_randoms(objs):
+    """Cycles' Object Info > Random for each object, measured (not guessed): every object gets a stand-in
+    plane carrying its exact name; one selected-to-active bake reads all of them into one image row.
+    Needed because joining the parts for the game gives them one new random value, and the plaster
+    materials use it to decide how much mud shows through (narrow 0.700-0.715 threshold)."""
+    names = [o.name for o in objs]
+    if not names: return {}
+    sc = bpy.context.scene; vl = bpy.context.view_layer; n = len(names)
+    mat = bpy.data.materials.new('__rand_probe__'); mat.use_nodes = True; nt = mat.node_tree; nt.nodes.clear()
+    oi = nt.nodes.new('ShaderNodeObjectInfo'); cc = nt.nodes.new('ShaderNodeCombineColor')
+    df = nt.nodes.new('ShaderNodeBsdfDiffuse'); out = nt.nodes.new('ShaderNodeOutputMaterial')
+    for k in ('Red', 'Green', 'Blue'): nt.links.new(oi.outputs['Random'], cc.inputs[k])
+    nt.links.new(cc.outputs[0], df.inputs['Color']); nt.links.new(df.outputs[0], out.inputs[0])
+    tm = bpy.data.materials.new('__rand_target__'); tm.use_nodes = True
+    im = bpy.data.images.new('__rand_img__', n, 4, float_buffer=True); im.colorspace_settings.name = 'Non-Color'
+    tn = tm.node_tree.nodes.new('ShaderNodeTexImage'); tn.image = im; tm.node_tree.nodes.active = tn
+    Z = -80.0; renamed = []; made = []
+    try:
+        for i, nm in enumerate(names):
+            ob = bpy.data.objects.get(nm)
+            if ob: ob.name = nm + '__randtmp'; renamed.append((ob, nm))
+            me = bpy.data.meshes.new('__rp_%d' % i)
+            me.from_pydata([(i + .05, .05, Z + .05), (i + .95, .05, Z + .05), (i + .95, .95, Z + .05), (i + .05, .95, Z + .05)], [], [(0, 1, 2, 3)])
+            me.materials.append(mat); p_ = bpy.data.objects.new(nm, me); sc.collection.objects.link(p_); made.append(p_)
+            assert p_.name == nm, 'name clash for ' + nm
+        verts, faces, uvs = [], [], []
+        for i in range(n):
+            b = len(verts); verts += [(i, 0, Z), (i + 1, 0, Z), (i + 1, 1, Z), (i, 1, Z)]; faces.append((b, b + 1, b + 2, b + 3))
+            uvs += [(i / n, 0), ((i + 1) / n, 0), ((i + 1) / n, 1), (i / n, 1)]
+        tme = bpy.data.meshes.new('__rand_target__'); tme.from_pydata(verts, [], faces)
+        uvl = tme.uv_layers.new(name='UVMap')
+        for li, l in enumerate(tme.loops): uvl.data[li].uv = uvs[l.vertex_index]
+        tme.materials.append(tm); tgt = bpy.data.objects.new('__rand_target__', tme); sc.collection.objects.link(tgt); made.append(tgt)
+        s0 = sc.cycles.samples; sc.cycles.samples = 1
+        try:
+            with bpy.context.temp_override(**_ctx()):
+                for x in vl.objects: x.select_set(False)
+                for p_ in made: p_.select_set(True)
+                vl.objects.active = tgt
+                bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, margin=0, use_selected_to_active=True,
+                                    cage_extrusion=.1, max_ray_distance=.2)
+        finally:
+            sc.cycles.samples = s0
+        px = list(im.pixels)
+        res = {nm: round(px[(2 * n + i) * 4], 5) for i, nm in enumerate(names)}
+    finally:
+        for p_ in made:
+            m_ = p_.data; bpy.data.objects.remove(p_, do_unlink=True); bpy.data.meshes.remove(m_)
+        for ob, nm in renamed: ob.name = nm
+        for x in (mat, tm): bpy.data.materials.remove(x)
+        bpy.data.images.remove(im)
+    return res
+
+def _uses_random(m):
+    return bool(m and m.node_tree and any(nd.type == 'OBJECT_INFO' and nd.outputs['Random'].is_linked for nd in m.node_tree.nodes))
+
 def build_joined(name, objs):
     """One mesh (world space) with all source materials; returns {'opaque','glass','emit'} objects."""
     temps = []
     gx = lib.coll('GAME_Export')
+    rnd = object_randoms([o for o in objs if any(_uses_random(sl.material) for sl in o.material_slots)])
+    log('%s: object random measured for %d objects' % (name, len(rnd)))
     for o in objs:
         me = light_mesh(o)
         if not me.polygons: bpy.data.meshes.remove(me); continue
+        at = me.attributes.new(RAND_ATTR, 'FLOAT', 'FACE')
+        at.data.foreach_set('value', [rnd.get(o.name, .5)] * len(me.polygons))
         if len(me.uv_layers) and 'UVMap' not in me.uv_layers: me.uv_layers[0].name = 'UVMap'
         if not len(me.uv_layers): me.uv_layers.new(name='UVMap')
         t = bpy.data.objects.new('__tmp_' + o.name, me); gx.objects.link(t); temps.append(t)
@@ -147,6 +209,14 @@ def bake_maps(o, sizes, samples=24, selected=None, extrusion=.15):
     else:
         mats_t = mats
     res = []
+    swapped = []      # Object Info > Random -> the per-part measured value, only while baking
+    if not selected:
+        for m in mats_t:
+            if not _uses_random(m): continue
+            nt = m.node_tree; an = nt.nodes.new('ShaderNodeAttribute'); an.attribute_type = 'GEOMETRY'; an.attribute_name = RAND_ATTR; an.name = '__objrand__'
+            for nd in [x for x in nt.nodes if x.type == 'OBJECT_INFO']:
+                for l in list(nd.outputs['Random'].links):
+                    to = l.to_socket; nt.links.remove(l); nt.links.new(an.outputs['Fac'], to); swapped.append((m, nd, to))
     try:
         for (btype, tag, nc), sz in zip((('DIFFUSE', 'col', False), ('NORMAL', 'nrm', True), ('ROUGHNESS', 'rough', True)), sizes):
             w, h = sz if isinstance(sz, tuple) else (sz, sz)
@@ -177,6 +247,13 @@ def bake_maps(o, sizes, samples=24, selected=None, extrusion=.15):
             res.append(im)
     finally:
         sc.cycles.samples = old
+        for m, nd, to in swapped:
+            nt = m.node_tree
+            for l in list(to.links): nt.links.remove(l)
+            nt.links.new(nd.outputs['Random'], to)
+        for m in {m for m, _, _ in swapped}:
+            an = m.node_tree.nodes.get('__objrand__')
+            if an: m.node_tree.nodes.remove(an)
     return res
 
 def game_material(name, col, nrm, rough, metal=0.0):
@@ -262,7 +339,15 @@ def export_group(key, colls, sizes, samples=24):
     op = parts.get('opaque')
     op.name = 'GX_%s_LOD0' % key; op.data.name = op.name
     unwrap(op)
-    col, nrm, rough = bake_maps(op, sizes, samples)
+    # the originals sit exactly where the bake mesh is, but displaced by a few mm: the plaster's AO dirt mask
+    # would see them and bake dark blotches. Hide them (and older game copies) from render while baking.
+    hidden = [o for o in objs if not o.hide_render] + [o for o in lib.coll('GAME_Export').objects
+                                                       if o not in parts.values() and not o.hide_render]
+    for o in hidden: o.hide_render = True
+    try:
+        col, nrm, rough = bake_maps(op, sizes, samples)
+    finally:
+        for o in hidden: o.hide_render = False
     gm = game_material('GM_' + key, col, nrm, rough)
     finalize_for_export(op, gm)
     l1 = lod1(op)
@@ -280,6 +365,7 @@ def export_group(key, colls, sizes, samples=24):
     for o in out:
         for name in [u.name for u in o.data.uv_layers if u.name != 'UVMap']: o.data.uv_layers.remove(o.data.uv_layers[name])
         for a in [a.name for a in o.data.color_attributes]: o.data.color_attributes.remove(o.data.color_attributes[a])
+        if RAND_ATTR in o.data.attributes: o.data.attributes.remove(o.data.attributes[RAND_ATTR])
     path = os.path.join(OUT, 'souq_%s.glb' % key)
     size = export_glb(path, out)
     info = dict(key=key, objects=len(objs), lod0_tris=tri_count(op), lod1_tris=tri_count(l1),
