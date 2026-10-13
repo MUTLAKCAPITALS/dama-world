@@ -4894,15 +4894,17 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   const changed=base&&((+d?.saveRev||0)!==base.rev||(d?.saveId||null)!==base.id||cloudAt!==base.at);
   if(changed&&d&&d.save){if(!accBackup(uid)){ACC.saveError='backup-failed';toast('ما قدرنا نحفظ النسخة الاحتياطية؛ فرّغ مساحة بالجهاز وأعد المزامنة',6000);return 'adopt-fail'}toast('تغيّر الحفظ من جهاز ثاني؛ حفظنا نسخة محلية احتياطية ونسترجع حفظ الحساب',5000)}
   ACC.adoptKey=uid+':'+((d&&d.saveId)||'legacy')+':'+(+(d&&d.saveRev)||0)+':'+cloudAt;ACC.baseRev=+(d&&d.saveRev)||0;ACC.baseSave=(d&&d.save)||null;ACC.baseId=(d&&d.saveId)||null;ACC.saveError=null;ACC.conflict=false;
-  try{localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
-
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
   if(d&&d.save&&(restore||changed||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  try{localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
   accPendSet(null);
   if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
   /* المحلي هو الأحدث: التعديلات اللي صارت وقت عدم التزامن تنحسب الحين */
   if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now();accRaw()}
-  ACC.synced=true;accUI();await accUpload(true);return 'local'}
+  ACC.synced=true;accUI();await accUpload(true);
+  if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return 'skip';
+  if(!ACC.synced){ACC.pendingCtx={uid,restore:true,retryMs:ctx.retryMs};accPendSet(uid);ACC.retryT=setTimeout(()=>accSync(ACC.pendingCtx),ctx.retryMs||30000);return 'fail'}
+  return 'local'}
 /* نعتمد حفظ السيرفر: ما نسجّل نجاح ولا نعيد التحميل إلا بعد ما تنكتب النسخة الصحيحة فعلاً */
 function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js);if(!sv||typeof sv!=='object'||Array.isArray(sv))throw Error('invalid')}catch(e){ACC.synced=false;toast('حفظك بالسيرفر فيه مشكلة — ما لمسنا شي');return false}
   const marker=ACC.adoptKey||String(cloudAt);let loaded=null;try{loaded=sessionStorage.getItem('accLoadedAt')}catch(e){}if(loaded===marker){ACC.synced=false;toast('ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم');return false}
@@ -4910,6 +4912,8 @@ function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js);if(!sv||typeof sv!=='
   try{localStorage.setItem(ACC_KEY,out);if(localStorage.getItem(ACC_KEY)!==out)throw new Error('verify')}
   catch(e){ACC.reloading=false;ACC.synced=false;
     toast(e&&(e.name==='QuotaExceededError'||e.code===22)?'مساحة التخزين بالجوال ممتلئة — ما قدرنا نرجّع حفظك. تقدمك بالسيرفر سليم':'ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم',5000);return false}
+  /* لا نعتمد إصدار السيرفر محلياً قبل نجاح كتابة الحفظ والتحقق منه. */
+  try{const uid=ONL.user.uid;localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
   accPendSet(null);try{sessionStorage.setItem('accLoadedAt',marker)}catch(e){}
   if(!window.__accNoReload)location.reload();return true}
 function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S));window.DAMA_LOCAL_SAVE_FAILED=false}catch(e){window.DAMA_LOCAL_SAVE_FAILED=true;toast('ما قدرنا نحفظ بالجهاز؛ لا تسكر الصفحة قبل تأكيد الحفظ بالسيرفر',6000)}try{updateProfile()}catch(e){}}
@@ -5026,7 +5030,6 @@ document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#hu
 /* زر الحساب بالأونلاين بدال زر Google القديم */
 const _onlGoogle29=onlGoogle;onlGoogle=function(){return accLoginDlg()};
 if(!window.DAMA_AUTH)setTimeout(accBoot,800);
-
 
 /* v30: إصلاح قلب الشاشة — المتصفح يعطي المقاس القديم أول لحظة الدوران، فنعيد الحساب بعد ما يستقر */
 (function(){let last='',busy=false,tm=[];
