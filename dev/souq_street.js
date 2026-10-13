@@ -66,7 +66,11 @@ function sqtApplyWorld(){if(!SOUQT.on||!W||W.theme.key!=='kw'||!SOUQT.data)retur
 /* raised shop floors and platforms */
 const _sqtGroundY=groundY;groundY=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){let h=0;for(const r of SOUQT.data.raised)if(x>r[0]&&x<r[1]&&z>r[2]&&z<r[3]&&r[4]>h)h=r[4];return h}return _sqtGroundY(x,z)};
 /* pergola, shop and passage ceilings keep the third-person camera inside */
-const _sqtCeil=souqCeil;souqCeil=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){let c=0;for(const r of SOUQT.data.ceil)if(x>r[0]&&x<r[1]&&z>r[2]&&z<r[3]&&(!c||r[4]<c))c=r[4];return c}return _sqtCeil(x,z)};
+function sqtCeilAt(x,z){let c=0;for(const r of SOUQT.data.ceil)if(x>r[0]&&x<r[1]&&z>r[2]&&z<r[3]&&(!c||r[4]<c))c=r[4];return c}
+/* the game asks for the ceiling above the player only; here it is the lowest ceiling along the whole camera boom,
+   so walking into a shop the camera stays under the awning outside, and walking out it stays under the shop ceiling */
+const _sqtCeil=souqCeil;souqCeil=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){const fx=-Math.sin(yaw),fz=-Math.cos(yaw),d=(typeof camDist==='number'?camDist:3)+.4;let c=0;
+    for(let k=0;k<=8;k++){const h=sqtCeilAt(x-fx*d*k/8,z-fz*d*k/8);if(h&&(!c||h<c))c=h}return c}return _sqtCeil(x,z)};
 /* inside the test block the world bounds are the block itself */
 const _sqtResolve=resolve;resolve=function(p,r){if(SOUQT.on&&W&&SOUQT.data&&sqtIn(p.x,p.z,2)){const B=W.bounds;W.bounds=sqtRect();try{return _sqtResolve(p,r)}finally{W.bounds=B}}return _sqtResolve(p,r)};
 const _sqtBuildWorld=buildWorld;buildWorld=function(key){const w=_sqtBuildWorld.apply(this,arguments);if(SOUQT.on&&key==='kw'){SOUQT.world=null;if(SOUQT.data)sqtApplyWorld();else sqtLoad().then(()=>{if(W===w)sqtApplyWorld()})}return w};
