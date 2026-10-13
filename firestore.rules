@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function registered() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function isAdmin() { return signedIn() && request.auth.token.email == 'alomarmutlak@gmail.com' && request.auth.token.email_verified == true; }
+    function ctlDoc() { return /databases/$(database)/documents/ctl/$(request.auth.uid); }
+    function notBanned() { return !exists(ctlDoc()) || get(ctlDoc()).data.get('ban', false) != true; }
+    function changesOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    match /users/{uid} {
+      // The document contains the complete private save, not just a public profile.
+      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if (signedIn() && request.auth.uid == uid) || isAdmin();
+    }
+    match /names/{key} {
+      allow read: if signedIn();
+      allow create: if registered() && request.resource.data.uid == request.auth.uid;
+      // Reusing a normalized name may change its display spelling, never its owner.
+      allow update: if registered() && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid && changesOnly(['name', 'at'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 3
+        && request.resource.data.name.size() <= 14 && request.resource.data.at is int;
+      allow delete: if (signedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+    }
+    match /ctl/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+    match /cfg/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /reports/{id} {
+      allow create: if signedIn() && request.resource.data.by == request.auth.uid && request.resource.data.status == 'open';
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      function member(r) { return request.auth.uid == r.host || request.auth.uid == r.get('guest', null); }
+      function validCreate(r) {
+        return roomId.matches('^[A-Z0-9]{4}$') && r.code == roomId && r.protocol == 2
+          && r.host == request.auth.uid && r.guest == null && r.state == 'wait'
+          && r.matchId is string && r.matchId.size() > 0 && r.matchId.size() <= 200
+          && r.moves == [] && r.messages == [] && r.voiceEpoch == 1 && r.resigned == null
+          && r.keys().hasOnly(['code','protocol','matchId','host','hostName','hostPhoto','hostRating',
+            'guest','guestName','state','moves','messages','voiceEpoch','resigned','created']);
+      }
+      function joining(a, b) {
+        return a.state == 'wait' && a.guest == null && request.auth.uid != a.host
+          && b.guest == request.auth.uid && b.guestProtocol == 2 && b.state == 'play'
+          && changesOnly(['guest','guestProtocol','guestName','guestPhoto','guestRating','state']);
+      }
+      function heartbeat(a, b) {
+        let field = request.auth.uid == a.host ? 'hostSeen' : 'guestSeen';
+        return changesOnly([field]) && b.get(field, null) == request.time;
+      }
+      function move(a, b) {
+        let n = a.moves.size();
+        let m = b.moves.size() > n ? b.moves[n] : {};
+        return a.state == 'play' && changesOnly(['moves']) && b.moves.size() == n + 1
+          && b.moves == a.moves.concat([m]) && m.keys().hasOnly(['n','by','from','steps','caps'])
+          && m.n == n && m.by == request.auth.uid && m.by == (n % 2 == 0 ? a.host : a.guest)
+          && m.from is string && m.from.matches('^[0-7][0-7]$')
+          && m.steps is string && m.steps.size() <= 256 && m.steps.matches('^[0-7][0-7](,[0-7][0-7])*$')
+          && m.caps is string && m.caps.size() <= 256 && (m.caps == '' || m.caps.matches('^[0-7][0-7](,[0-7][0-7])*$'));
+      }
+      function chat(a, b) {
+        let before = a.get('messages', []);
+        let after = b.messages;
+        let m = after.size() > 0 ? after[after.size() - 1] : {};
+        let kept = before.size() < 40 ? before : before.removeAll([before[0]]);
+        return a.state == 'play' && changesOnly(['messages']) && after.size() <= 40
+          && after == kept.concat([m]) && m.keys().hasOnly(['id','by','q','at'])
+          && m.by == request.auth.uid && m.id is string && m.id.size() <= 200
+          && m.q is int && m.q >= 0 && m.q < 4 && m.at is int;
+      }
+      function voiceReset(a, b) {
+        return changesOnly(['voiceEpoch','vOffer','vAnswer','hIce','gIce'])
+          && b.voiceEpoch == a.get('voiceEpoch', 0) + 1
+          && b.vOffer == null && b.vAnswer == null && b.hIce == [] && b.gIce == [];
+      }
+      function voice(a, b) {
+        let host = request.auth.uid == a.host;
+        let sdp = b.get(host ? 'vOffer' : 'vAnswer', null);
+        let ice = b.get(host ? 'hIce' : 'gIce', []);
+        return a.state == 'play' && changesOnly(host ? ['vOffer','hIce'] : ['vAnswer','gIce'])
+          && (sdp == null || (sdp is string && sdp.size() <= 65536)) && ice is list && ice.size() <= 128;
+      }
+      function finish(a, b) {
+        // Full board legality and competitive ratings still need a trusted game server.
+        let r = b.get('result', {});
+        return a.state == 'play' && changesOnly(['state','result']) && b.state == 'done'
+          && r.keys().hasOnly(['winner','reason','plies']) && r.plies == a.moves.size()
+          && (r.winner == null || r.winner == a.host || r.winner == a.guest)
+          && r.reason is string && r.reason.size() <= 120;
+      }
+      function leaving(a, b) {
+        return a.state == 'play' && changesOnly(['state','closedBy']) && b.state == 'closed' && b.closedBy == request.auth.uid;
+      }
+      function edit(a, b) {
+        return joining(a, b) || (member(a) && (heartbeat(a, b) || move(a, b) || chat(a, b)
+          || voiceReset(a, b) || voice(a, b) || finish(a, b) || leaving(a, b)));
+      }
+      // Open waiting rooms can be joined by code; active voice and moves are private.
+      allow get: if isAdmin() || (registered() && notBanned() && (!exists(/databases/$(database)/documents/rooms/$(roomId))
+        || member(resource.data) || (resource.data.state == 'wait' && resource.data.guest == null)));
+      allow list: if isAdmin();
+      allow create: if registered() && notBanned() && validCreate(request.resource.data);
+      allow update: if registered() && notBanned() && resource.data.protocol == 2 && edit(resource.data, request.resource.data);
+      allow delete: if registered() && request.auth.uid == resource.data.host && resource.data.state == 'wait';
+    }
+  }
+}

@@ -4598,7 +4598,7 @@ async function onlGoogle(){try{const p=new firebase.auth.GoogleAuthProvider();
 async function onlHost(){if(!requirePlayAccount())return;if(ONL.creating)return;ONL.creating=true;let code,ref;
   try{const profile=await ONL.db.collection('users').doc(ONL.user.uid).get({source:'server'});const rating=+(profile.exists&&profile.data().rating)||1000;
     let created=false;for(let i=0;i<5&&!created;i++){code=onlCode();ref=ONL.db.collection('rooms').doc(code);
-      created=await ONL.db.runTransaction(async tx=>{const d=await tx.get(ref);if(d.exists)return false;
+      created=await ONL.db.runTransaction(async tx=>{let d;try{d=await tx.get(ref)}catch(e){if(e.code==='permission-denied')return false;throw e}if(d.exists)return false;
         tx.set(ref,{code,protocol:2,matchId:ONL.user.uid+'-'+Date.now()+'-'+Math.random().toString(36).slice(2),host:ONL.user.uid,hostName:S.name||'لاعب',hostPhoto:S.avatarImg||null,hostRating:rating,guest:null,guestName:'',state:'wait',moves:[],messages:[],voiceEpoch:1,resigned:null,created:Date.now()});return true})}
     if(!created){toast('كل الرموز اللي جربناها مستخدمة؛ حاول مرة ثانية');return}
   }catch(e){toast(onlErr(e));return}finally{ONL.creating=false}
