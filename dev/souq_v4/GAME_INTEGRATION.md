@@ -78,3 +78,6 @@ Filled in in the report below.
 - **Mobile:** not tested on a phone. No mobile result is claimed.
 - **Sky and final lighting:** not started (as asked). The street uses the game's current golden-hour light.
 - **Full souq:** not built. It waits for approval.
+
+## Approval
+Approved by the user on 2026-10-13 (23:48 Kuwait) at commit `14bd738`. The three buildings, pergola, paving, passages and street lighting are frozen as the reference: no further changes to them. Further souq work builds around them.
