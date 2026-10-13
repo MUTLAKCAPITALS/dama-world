@@ -189,6 +189,9 @@ def _img(name, w, h, noncolor):
     im.colorspace_settings.name = 'Non-Color' if noncolor else 'sRGB'
     return im
 
+# The game's Kuwait day sun (normalised W.sunDir, game axes x, y-up, z): baked as a shadow mask so phones,
+# where the game's low quality turns shadow maps off, still get the building and pergola shadows.
+GAME_SUN = (-0.6649, 0.4388, 0.6044)
 AO_DISTANCE = 4.0     # metres: corners, arcades, shop interiors and the street under the pergola see less sky
 
 def _bake_ao_into_orm(o, rough, hide=None, mats_t=()):
@@ -216,15 +219,49 @@ def _bake_ao_into_orm(o, rough, hide=None, mats_t=()):
         ls.distance = d0
         for x in hidden: x.hide_render = False
         for m, n in nodes: m.node_tree.nodes.remove(n)
+    sm = _bake_sun_mask(o, w, h, hide, mats_t)
     a = np.empty(w * h * 4, dtype=np.float32); ao.pixels.foreach_get(a)
     r = np.empty(w * h * 4, dtype=np.float32); rough.pixels.foreach_get(r)
-    a = a.reshape(-1, 4); r = r.reshape(-1, 4)
-    orm = np.stack([a[:, 0], r[:, 1], np.zeros(len(a), np.float32), np.ones(len(a), np.float32)], 1).ravel()
+    m = np.empty(w * h * 4, dtype=np.float32); sm.pixels.foreach_get(m)
+    a = a.reshape(-1, 4); r = r.reshape(-1, 4); m = m.reshape(-1, 4)
+    orm = np.stack([a[:, 0], r[:, 1], m[:, 0], np.ones(len(a), np.float32)], 1).ravel()
+    log('%s: sun mask mean %.2f' % (o.name, float(m[:, 0].mean())))
     out = _img('GX_%s_orm' % o.name, w, h, True); out.pixels.foreach_set(orm)
     for im in (ao, out):
         im.filepath_raw = os.path.join(OUT, 'bake', im.name + '.png'); im.file_format = 'PNG'; im.save()
     log('%s: AO mean %.2f' % (o.name, float(a[:, 0].mean())))
     return out
+
+def _bake_sun_mask(o, w, h, hide=None, mats_t=()):
+    """1 where the game's day sun reaches the surface, 0 in shadow (Cycles SHADOW bake, only a temporary
+    sun lamp in the game's direction, other lights and the world light off for the pass)."""
+    sc = bpy.context.scene; vl = bpy.context.view_layer
+    sm = _img('GX_%s_sun' % o.name, w, h, True)
+    nodes = []
+    for mt in mats_t:
+        n = mt.node_tree.nodes.new('ShaderNodeTexImage'); n.image = sm; n.name = '__bake__'
+        mt.node_tree.nodes.active = n; nodes.append((mt, n))
+    gx_, gy_, gz_ = GAME_SUN
+    to_sun = Vector((gx_, -gz_, gy_)).normalized()          # game (x, y, z) -> Blender (x, -z, y)
+    ld = bpy.data.lights.new('__game_sun__', 'SUN'); ld.energy = 3.0; ld.angle = math.radians(1.0)
+    lo = bpy.data.objects.new('__game_sun__', ld); sc.collection.objects.link(lo)
+    lo.rotation_euler = to_sun.to_track_quat('Z', 'Y').to_euler()
+    lights = [x for x in sc.objects if x.type == 'LIGHT' and x is not lo and not x.hide_render]
+    hidden = lights + [x for x in (hide or []) if not x.hide_render]
+    for x in hidden: x.hide_render = True
+    w0 = sc.world; dark = bpy.data.worlds.new('__dark__'); sc.world = dark
+    try:
+        with bpy.context.temp_override(**_ctx()):
+            for x in vl.objects: x.select_set(False)
+            o.select_set(True); vl.objects.active = o
+            bpy.ops.object.bake(type='SHADOW', margin=6, use_clear=True)
+    finally:
+        sc.world = w0; bpy.data.worlds.remove(dark)
+        for x in hidden: x.hide_render = False
+        bpy.data.objects.remove(lo); bpy.data.lights.remove(ld)
+        for mt, n in nodes: mt.node_tree.nodes.remove(n)
+    sm.filepath_raw = os.path.join(OUT, 'bake', sm.name + '.png'); sm.file_format = 'PNG'; sm.save()
+    return sm
 
 def _gltf_output_group():
     """The node group the glTF exporter reads extra outputs from (here: Occlusion)."""
@@ -318,8 +355,10 @@ def game_material(name, col, nrm, rough, metal=0.0):
     t.links.new(sep.outputs[1], p.inputs['Roughness'])
     gg = t.nodes.new('ShaderNodeGroup'); gg.node_tree = _gltf_output_group()      # R of the same ORM image = occlusion
     t.links.new(sep.outputs[0], gg.inputs['Occlusion'])
+    # B carries the baked sun mask; wiring it to Metallic is what makes the exporter keep it. The game loader
+    # forces metalness to 0, so in the game it is only read as the mask.
+    t.links.new(sep.outputs[2], p.inputs['Metallic'])
     nm = t.nodes.new('ShaderNodeNormalMap'); t.links.new(tex(nrm).outputs[0], nm.inputs['Color']); t.links.new(nm.outputs[0], p.inputs['Normal'])
-    p.inputs['Metallic'].default_value = metal
     t.links.new(p.outputs[0], out.inputs['Surface'])
     return m
 

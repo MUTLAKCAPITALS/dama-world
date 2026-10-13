@@ -45,18 +45,25 @@ function sqtLoad(){if(SOUQT.pending)return SOUQT.pending;SOUQT.stats.t0=performa
      walls and undersides (arcade ceilings, pergola undersides), weakest on the floor itself;
    both are multiplied by the baked sky-visibility (AO) map, so corners, arcades, passages and shop
    interiors stay darker than the open street. Direct sun and the beam shadows are not changed. */
-const SQ_LIGHT={kSky:{value:.6},kBounce:{value:.45},aoBounce:{value:.35},aoGame:.6,sky:{value:THREE.Color?new THREE.Color():null},bounce:{value:THREE.Color?new THREE.Color():null}};
+/* the day sun the shadow mask was baked for (normalised W.sunDir, Kuwait, day). On phones the game's low quality
+   switches shadow maps off; then, and only while the live sun matches this direction, the street uses the baked
+   mask (blue channel of its ORM texture) for direct sun. With shadow maps on, the real shadows are used. */
+const SQ_SUN=[-0.6649,0.4388,0.6044];
+const SQ_LIGHT={kSky:{value:.6},kBounce:{value:.45},aoBounce:{value:.35},aoGame:.6,maskOn:{value:0},sky:{value:THREE.Color?new THREE.Color():null},bounce:{value:THREE.Color?new THREE.Color():null}};
 function sqtLightTick(){if(!SQ_LIGHT.sky.value)return;if(typeof hemi!=='undefined'&&hemi)SQ_LIGHT.sky.value.copy(hemi.color).multiplyScalar(hemi.intensity/.42);
-  if(typeof sun!=='undefined'&&sun)SQ_LIGHT.bounce.value.copy(sun.color).multiplyScalar(Math.min(1.2,sun.intensity/2))}
+  if(typeof sun!=='undefined'&&sun){SQ_LIGHT.bounce.value.copy(sun.color).multiplyScalar(Math.min(1.2,sun.intensity/2));
+    const dx=sun.position.x-sun.target.position.x,dy=sun.position.y-sun.target.position.y,dz=sun.position.z-sun.target.position.z,l=Math.hypot(dx,dy,dz)||1;
+    const match=(dx*SQ_SUN[0]+dy*SQ_SUN[1]+dz*SQ_SUN[2])/l>.995;SQ_LIGHT.maskOn.value=(!renderer.shadowMap.enabled&&match)?1:0}}
 /* tuned in the game (street view, arcade, spice shop): before mean brightness 40/255 with 69% of the frame near black;
    after 65/255 and 19%, shop interiors stay darker than the street. The baked sky visibility (AO) fully scales the
    sky fill, only lightly scales the bounce (the occluding walls are where the bounce comes from), and scales the
    game's own ambient to 60%. Added after the AO step so each term gets its own share. */
 function sqtFill(ma){if(ma.userData.sqFill)return;ma.userData.sqFill=true;ma.aoMapIntensity=SQ_LIGHT.aoGame;
-  ma.onBeforeCompile=sh=>{sh.uniforms.sqSky=SQ_LIGHT.sky;sh.uniforms.sqBounce=SQ_LIGHT.bounce;sh.uniforms.sqKSky=SQ_LIGHT.kSky;sh.uniforms.sqKB=SQ_LIGHT.kBounce;sh.uniforms.sqAoB=SQ_LIGHT.aoBounce;
-    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 sqSky;uniform vec3 sqBounce;uniform float sqKSky;uniform float sqKB;uniform float sqAoB;')
+  ma.onBeforeCompile=sh=>{sh.uniforms.sqSky=SQ_LIGHT.sky;sh.uniforms.sqBounce=SQ_LIGHT.bounce;sh.uniforms.sqKSky=SQ_LIGHT.kSky;sh.uniforms.sqKB=SQ_LIGHT.kBounce;sh.uniforms.sqAoB=SQ_LIGHT.aoBounce;sh.uniforms.sqMaskOn=SQ_LIGHT.maskOn;
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 sqSky;uniform vec3 sqBounce;uniform float sqKSky;uniform float sqKB;uniform float sqAoB;uniform float sqMaskOn;')
+      .replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n#ifdef USE_ROUGHNESSMAP\n{float sqSun=mix(1.,texture2D(roughnessMap,vUv).b,sqMaskOn);reflectedLight.directDiffuse*=sqSun;reflectedLight.directSpecular*=sqSun;}\n#endif')
       .replace('#include <aomap_fragment>','#include <aomap_fragment>\n{float sqAO=1.;\n#ifdef USE_AOMAP\n sqAO=texture2D(aoMap,vUv2).r;\n#endif\n vec3 nW=inverseTransformDirection(normal,viewMatrix);float up=nW.y*.5+.5;\n reflectedLight.indirectDiffuse+=material.diffuseColor*(sqSky*sqKSky*up*sqAO+sqBounce*sqKB*(.6-.4*nW.y)*mix(1.,sqAO,sqAoB));}')};
-  ma.customProgramCacheKey=()=>'souqfill2';ma.needsUpdate=true}
+  ma.customProgramCacheKey=()=>'souqfill3';ma.needsUpdate=true}
 /* one THREE.LOD per building: LOD0 near, LOD1 (decimated, same atlas) beyond SOUQT.lod1 metres */
 function sqtBuild(){const root=new THREE.Group();root.name='souqTest';
   /* the GLBs are in Blender street coordinates; the street sits at origin[2] metres south in the game */

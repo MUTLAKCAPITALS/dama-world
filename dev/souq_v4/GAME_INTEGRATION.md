@@ -46,6 +46,34 @@ Status: a test area for review. It is **not** on `main` and **not** in the norma
 ## Measured in the browser (built-in browser on the user's laptop: AMD Radeon integrated GPU, D3D11)
 Filled in in the report below.
 
+## Street lighting (test area only; the game's sun, shadows and sky are unchanged)
+**Diagnosis in the game (before any change):**
+- **Sun:** the Kuwait day sun comes from the south-west at 26° elevation. At that angle the 8.5 m south row (C1) shades the whole street floor: 0 of 65 floor points can see the sun, pergola or not. The north facades catch the sun only above about 3.5–5 m, and that is where the batten stripes fall. This is geometry, not a shadow bug.
+- **Pergola:** from the floor, looking straight up, it covers about 28% of the sky.
+- **Shadow map:** 2048 px over ±30 m (2.9 cm per pixel), soft PCF, bias -0.00035, normal bias 0.03. It follows the player and shows no acne and no leaks.
+- **What made the street dark:** indirect light. The game has only a weak blue hemisphere light (0.42). The frame measured a mean of 40/255, with 69% of pixels near black.
+
+**What was added:**
+- **Baked in Blender:** sky visibility (AO, 4 m) for every building, the pergola and the ground. It is packed into the R channel of the existing roughness texture (glTF ORM), so it costs no extra texture.
+- **Street-material shader, two extra indirect terms:**
+  - sky fill, scaled by the game's hemisphere light and fully by AO;
+  - warm bounce, scaled by the game's sun colour and only lightly by AO (the occluding walls are where the bounce comes from), and strongest on walls and on undersides such as arcade ceilings.
+  - The game's own ambient keeps 60% of the AO.
+- **Direct sun and the beam shadows** are not touched.
+- **Measured** (mean brightness / % near black):
+
+  | View | Before | After |
+  |---|---|---|
+  | street | 40 / 69% | 65 / 19% |
+  | arcade | 45 / 35% | 79 / 6% |
+  | spice shop | 36 / 44% | 38–47 / 27–41% (stays darker than the street, as it should) |
+
+**Phones:**
+- **Shadows:** the game's low quality (automatic on phones) turns shadow maps off for the whole game. The street then gets a baked sun-shadow mask for the day sun, in the B channel of the same ORM texture. It is used only while shadow maps are off and the live sun matches the baked direction. Sunset and night fall back to the game's behaviour.
+- **iPhone WebGL stops:** the desktop street textures take about 411 MB of GPU memory with mipmaps, on top of about 195 MB for the base world. That is enough for iPhone Safari to drop the WebGL context, and the game then shows "توقف عرض اللعبة". Phones now load light copies (`souq_*_m.glb`, made by `tools/glb_mobile.py`): the same geometry, 4.3 MB of downloads and about 51 MB of textures. A missing light copy falls back to the full model.
+- **`?souqdiag=1`:** shows one status line on screen (files, load time, fps, textures, context-lost count) for testing on a phone.
+- **Not yet tested on a real iPhone.** Whether the base game without the street also stalls on iPhone has not been checked on a device.
+
 ## Not done / not claimed
 - **Mobile:** not tested on a phone. No mobile result is claimed.
 - **Sky and final lighting:** not started (as asked). The street uses the game's current golden-hour light.
