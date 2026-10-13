@@ -37,6 +37,82 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    match /socialPrefs/{uid} {
+      allow get: if registered() && request.auth.uid == uid;
+      allow create, update: if registered() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['allowRequests']) && request.resource.data.allowRequests is bool;
+    }
+
+    // Real social links are private to their two members. They never expose /users saves.
+    match /friendships/{linkId} {
+      function member(r) { return request.auth.uid in r.members; }
+      function shape(r) {
+        return r.keys().hasOnly(['v','members','by','names','nameKeys','status','blocked','visible','createdAt','updatedAt','messages','seq'])
+          && r.v == 1 && r.members is list && r.members.size() == 2
+          && r.members[0] is string && r.members[1] is string
+          && r.members[0].matches('^[A-Za-z0-9_-]{1,128}$') && r.members[1].matches('^[A-Za-z0-9_-]{1,128}$')
+          && r.members[0] < r.members[1] && linkId == r.members[0] + '~' + r.members[1]
+          && r.by in r.members && r.names is map && r.names.keys().hasOnly(r.members) && r.names.keys().hasAll(r.members)
+          && r.nameKeys is map && r.nameKeys.keys().hasOnly(r.members) && r.nameKeys.keys().hasAll(r.members)
+          && r.status in ['pending','accepted','closed','blocked']
+          && r.blocked is list && r.blocked.size() <= 2 && r.blocked.toSet().size() == r.blocked.size() && r.blocked.hasOnly(r.members)
+          && r.visible == (r.status == 'closed' ? [] : r.status == 'blocked' ? r.blocked : r.members)
+          && (r.status == 'blocked' ? r.blocked.size() > 0 : r.blocked.size() == 0)
+          && r.createdAt is timestamp && r.updatedAt == request.time
+          && r.messages is list && r.messages.size() <= 20 && r.seq is int && r.seq >= 0;
+      }
+      function reservedName(r, uid) {
+        let key = r.nameKeys[uid];
+        return key is string && key.size() >= 1 && key.size() <= 100 && !key.matches('.*[/].*')
+          && r.names[uid] is string && r.names[uid].size() >= 3 && r.names[uid].size() <= 14
+          && get(/databases/$(database)/documents/names/$(key)).data.uid == uid
+          && get(/databases/$(database)/documents/names/$(key)).data.name == r.names[uid];
+      }
+      function acceptsRequests(r) {
+        let other = r.members[0] == request.auth.uid ? r.members[1] : r.members[0];
+        let path = /databases/$(database)/documents/socialPrefs/$(other);
+        return exists(path) && get(path).data.allowRequests == true;
+      }
+      function identity(r) { return reservedName(r,r.members[0]) && reservedName(r,r.members[1]); }
+      function stateChange(a,b) {
+        return changesOnly(['status','blocked','visible','updatedAt']) && (
+          (a.status == 'pending' && b.status == 'accepted' && a.by != request.auth.uid)
+          || (a.status in ['pending','accepted'] && b.status == 'closed')
+          || (!(request.auth.uid in a.blocked) && b.status == 'blocked' && b.blocked == a.blocked.concat([request.auth.uid]))
+          || (request.auth.uid in a.blocked && b.blocked == a.blocked.removeAll([request.auth.uid])
+            && b.status == (b.blocked.size() == 0 ? 'closed' : 'blocked')));
+      }
+      function reopen(a,b) {
+        return a.status == 'closed' && b.status == 'pending' && b.by == request.auth.uid
+          && request.time >= a.updatedAt + duration.value(60,'s')
+          && changesOnly(['by','names','nameKeys','status','visible','updatedAt']) && identity(b) && acceptsRequests(b);
+      }
+      function chat(a,b) {
+        let after = b.messages;
+        let m = after.size() > 0 ? after[after.size()-1] : {};
+        let kept = a.messages.size() < 20 ? a.messages : a.messages.removeAll([a.messages[0]]);
+        return a.status == 'accepted' && changesOnly(['messages','seq','updatedAt'])
+          && request.time >= a.updatedAt + duration.value(1,'s') && b.seq == a.seq + 1
+          && (!exists(ctlDoc()) || get(ctlDoc()).data.get('mute',false) != true)
+          && after == kept.concat([m]) && m.keys().hasOnly(['n','id','by','text','at'])
+          && m.id is string && m.id.size() >= 1 && m.id.size() <= 160
+          && m.n == b.seq && m.by == request.auth.uid && m.at is int && m.at >= 0
+          && m.text is string && m.text.size() >= 1 && m.text.size() <= 240 && m.text.trim().size() > 0;
+      }
+      allow get: if registered() && notBanned() &&
+        (exists(/databases/$(database)/documents/friendships/$(linkId)) ? member(resource.data) : request.auth.uid in linkId.split('~'));
+      allow list: if registered() && notBanned() && request.query.limit <= 100 && request.auth.uid in resource.data.visible;
+      allow create: if registered() && notBanned() && shape(request.resource.data) && member(request.resource.data)
+        && request.resource.data.by == request.auth.uid && request.resource.data.createdAt == request.time
+        && request.resource.data.messages == [] && request.resource.data.seq == 0 && identity(request.resource.data)
+        && ((request.resource.data.status == 'pending' && acceptsRequests(request.resource.data)) || (request.resource.data.status == 'blocked' && request.resource.data.blocked == [request.auth.uid]));
+      allow update: if registered() && notBanned() && member(resource.data) && shape(request.resource.data)
+        && request.resource.data.members == resource.data.members && request.resource.data.createdAt == resource.data.createdAt
+        && (stateChange(resource.data,request.resource.data) || reopen(resource.data,request.resource.data) || chat(resource.data,request.resource.data));
+      // A retained closed/blocked link prevents deleting and recreating it to bypass a block or cooldown.
+      allow delete: if false;
+    }
+
     match /rooms/{roomId} {
       function member(r) { return request.auth.uid == r.host || request.auth.uid == r.get('guest', null); }
       function validCreate(r) {
