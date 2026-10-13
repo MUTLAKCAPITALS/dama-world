@@ -1,4 +1,4 @@
-/* Sign-in is the entry point. The game is loaded only after Firebase restores a real account. */
+/* Restore members automatically; visitors may explicitly browse as a local-only guest. */
 (function () {
   'use strict';
   const CONFIG = {apiKey:'AIzaSyAHsUMKUr1dDgUXFUCk1SNj0hpwuoKNw8A',authDomain:'dama-world.firebaseapp.com',projectId:'dama-world',storageBucket:'dama-world.firebasestorage.app',messagingSenderId:'751728629330',appId:'1:751728629330:web:3f0e015059b1e646a6b18b'};
@@ -9,7 +9,10 @@
   let busy = false, fatal = false, formMode = 'login';
   const $ = id => document.getElementById(id);
   const real = user => !!user && !user.isAnonymous;
-  const gate = window.DAMA_AUTH = {config:CONFIG, entered:false, uid:null, attach, syncResult};
+  const gate = window.DAMA_AUTH = {config:CONFIG, entered:false, guest:false, promptOpen:false,
+    saveKey:'damaworld.v1', uid:null, attach, syncResult, requireAccount, openAccount};
+  const sessionValid = () => gate.guest ? !real(auth && auth.currentUser) :
+    real(auth && auth.currentUser) && auth.currentUser.uid === userId;
 
   function storage(action, key, value) {
     try { return localStorage[action](key, value); }
@@ -70,7 +73,36 @@
     $('authPassword').autocomplete = register ? 'new-password' : 'current-password';
     $('authPassword').required = !reset;
     $('authPassword').disabled = reset;
+    $('authGuest').textContent = gate.entered ? 'متابعة التصفح كضيف' : 'الدخول كضيف';
     formStatus('');
+  }
+  function openAccount(value = 'register') {
+    if (busy || !gate.guest || !gate.entered) return;
+    gate.promptOpen = true;
+    state('login'); mode(value);
+    if (value === 'register') {
+      $('authTitle').textContent = 'أنشئ حسابك عشان تلعب';
+      $('authSubtitle').textContent = 'تقدر تتصفح اللوبي والعالم كضيف. للمشاركة في اللعب، أنشئ حساب أو سجّل دخولك.';
+    }
+  }
+  function requireAccount() {
+    if (gate.entered && !gate.guest && sessionValid()) return true;
+    if (gate.guest) openAccount();
+    else state('error', message({code:'session'}));
+    return false;
+  }
+  async function browseGuest() {
+    if (busy || launching || !auth) return;
+    if (real(auth.currentUser)) { location.reload(); return; }
+    if (gate.entered) {
+      gate.promptOpen = false; $('authGate').hidden = true;
+      $('authPassword').value = ''; formStatus(''); return;
+    }
+    gate.guest = true; gate.saveKey = 'damaworld.guest.v1';
+    setBusy(true);
+    try { await launch(null); }
+    catch (error) { state('error', message(error)); }
+    finally { setBusy(false); }
   }
   function loadScript(src) {
     if (scripts.has(src)) return scripts.get(src);
@@ -125,18 +157,25 @@
   }
   async function launch(user) {
     if (launching || injected) return;
-    if (!real(user)) throw Object.assign(new Error('session'), {code:'session'});
-    launching = true; gate.uid = userId = user.uid;
-    state('loading', 'جارٍ استرجاع تقدمك…');
+    if (!gate.guest && !real(user)) throw Object.assign(new Error('session'), {code:'session'});
+    launching = true; gate.uid = userId = gate.guest ? null : user.uid;
+    state('loading', gate.guest ? 'جارٍ تجهيز زيارتك…' : 'جارٍ استرجاع تقدمك…');
     try {
       /* Persist the intent before sign-in; pin it to the resulting UID before loading any game code. */
-      const intent = storage('getItem', INTENT);
-      if (intent) { try { sessionStorage.removeItem('accLoadedAt'); } catch (_) {} }
-      if (intent === 'restore') storage('setItem', PENDING, user.uid);
-      if (intent === 'new') storage('removeItem', PENDING);
-      storage('removeItem', INTENT);
+      if (!gate.guest) {
+        const intent = storage('getItem', INTENT);
+        if (intent) { try { sessionStorage.removeItem('accLoadedAt'); } catch (_) {} }
+        if (intent === 'restore') storage('setItem', PENDING, user.uid);
+        if (intent === 'new-guest') {
+          const save = storage('getItem', 'damaworld.guest.v1') || '{}';
+          storage('setItem', 'damaworld.v1', save);
+          if (storage('getItem', 'damaworld.v1') !== save) throw Object.assign(new Error('storage'), {code:'storage'});
+        }
+        if (intent === 'new' || intent === 'new-guest') storage('removeItem', PENDING);
+        storage('removeItem', INTENT);
+      }
       for (const dep of document.querySelectorAll('script[data-game-src]')) await loadScript(dep.dataset.gameSrc);
-      if (!real(auth.currentUser) || auth.currentUser.uid !== userId) throw Object.assign(new Error('session'), {code:'session'});
+      if (!sessionValid()) throw Object.assign(new Error('session'), {code:'session'});
       const source = $('damaGameSource');
       if (!source) throw Object.assign(new Error('game'), {code:'game'});
       const script = document.createElement('script');
@@ -159,7 +198,7 @@
         formStatus('إذا الإيميل مسجّل، يوصلك رابط الاستعادة. شيّك الوارد والبريد غير المرغوب.', true);
         return;
       }
-      storage('setItem', INTENT, !google && formMode === 'register' ? 'new' : 'restore');
+      storage('setItem', INTENT, !google && formMode === 'register' ? (gate.guest ? 'new-guest' : 'new') : 'restore');
       if (google) {
         const provider = new firebase.auth.GoogleAuthProvider();
         try {
@@ -174,6 +213,11 @@
         else await auth.createUserWithEmailAndPassword(email, password);
       } else await auth.signInWithEmailAndPassword(email, password);
       $('authPassword').value = '';
+      if (gate.guest && injected) {
+        /* A fresh page must reconcile the member save; never reuse the running guest state. */
+        state('loading', 'جارٍ فتح حسابك واسترجاع تقدمك…');
+        location.reload(); return;
+      }
       await launch(auth.currentUser);
     } catch (error) {
       if (auth && real(auth.currentUser)) state('error', message(error));
@@ -192,30 +236,33 @@
     if (result === 'cloud') { state('loading', 'تم استرجاع تقدمك…'); return; }
     if (result === 'fail') { state('error', 'ما قدرنا نقرأ حفظك من السيرفر. تأكد من الاتصال، وبنحاول مرة ثانية.'); return; }
     if (result === 'adopt-fail') { state('error', 'ما قدرنا نسترجع حفظك على الجهاز. تأكد من مساحة التخزين ثم أعد المحاولة. حفظ السيرفر ما تغيّر.'); return; }
-    if (result !== 'local' || !hooks || !real(auth.currentUser) || auth.currentUser.uid !== userId) {
+    if (result !== (gate.guest ? 'guest' : 'local') || !hooks || !sessionValid()) {
       state('error', message({code:'session'})); return;
     }
     entering = true; state('loading', 'جارٍ تجهيز اللعبة…');
     Promise.resolve().then(() => hooks.enter()).then(() => {
-      if (!real(auth.currentUser) || auth.currentUser.uid !== userId) throw Object.assign(new Error('session'), {code:'session'});
+      if (!sessionValid()) throw Object.assign(new Error('session'), {code:'session'});
       gate.entered = true; $('authGate').hidden = true;
+      entering = false;
       document.body.classList.remove('auth-pending');
       if (hooks.afterEnter) hooks.afterEnter();
     }).catch(() => { entering = false; fatal = true; state('error', message({code:'game'})); });
   }
   async function retry() {
     if (busy || entering) return;
-    if (injected && (!real(auth.currentUser) || auth.currentUser.uid !== userId)) { location.reload(); return; }
+    if (injected && !sessionValid()) { location.reload(); return; }
     if (fatal || injected && !hooks) { location.reload(); return; }
     if (hooks) {
       state('loading', 'جارٍ استرجاع تقدمك…');
       try { await hooks.retry(); } catch (error) { state('error', message(error)); }
-    } else await begin();
+    } else if (gate.guest) await browseGuest();
+    else await begin();
   }
   $('authForm').addEventListener('submit', event => { event.preventDefault(); signIn(false); });
   $('authGoogle').addEventListener('click', () => signIn(true));
   $('authSwitch').addEventListener('click', () => mode(formMode === 'login' ? 'register' : 'login'));
   $('authForgot').addEventListener('click', () => mode('reset'));
   $('authRetry').addEventListener('click', retry);
+  $('authGuest').addEventListener('click', browseGuest);
   begin();
 })();

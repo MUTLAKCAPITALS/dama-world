@@ -16,6 +16,7 @@ body.auth-pending #start,body.auth-pending #rot,body.auth-pending #intro{display
 .auth-gate input{display:block;width:100%;height:44px;background:#090f23a8;border:1px solid #51617c;border-radius:10px;color:#fff;padding:10px 12px;font-size:16px;text-align:left;direction:ltr;outline:none;user-select:text;-webkit-user-select:text}
 .auth-gate input:focus{border-color:#edc77c;box-shadow:0 0 0 3px #edc77c20}
 .auth-link{border:0;background:none;color:#e6c481;padding:10px 3px;font-size:13px!important;min-height:40px}.auth-switch{display:block;width:100%;margin-top:4px;color:#ccd5e8}.auth-forgot{display:block;margin-right:auto;font-size:12px!important;padding-bottom:0}
+.auth-guest{display:block;width:100%;min-height:42px;margin-top:12px;padding:9px 12px;border:1px solid #718099;border-radius:12px;background:#ffffff08;color:#e3e9f5;font-weight:600!important}.auth-guest:hover{background:#ffffff12}.auth-gate .auth-guest-note{font-size:11px;line-height:1.6;color:#aeb9cb;margin:8px 0 0}
 .auth-form-status{font-size:13px;line-height:1.65;color:#ffb5b5;margin-top:8px;min-height:0}.auth-form-status:empty{display:none}.auth-form-status.ok{color:#9ce3c0}
 .auth-wait{padding:14px 0}.auth-wait p{margin:18px 0 6px}.auth-spinner{display:block;width:30px;height:30px;margin:6px auto;border:3px solid #edc77c26;border-top-color:#edc77c;border-radius:50%;animation:auth-spin .9s linear infinite}
 .auth-gate :focus-visible{outline:2px solid #ffe1a0;outline-offset:3px}
