@@ -6128,7 +6128,7 @@ wmpInstall();
 /* models load next to the page; on a raw.githack preview pinned to a commit they come from jsDelivr instead
    (githack proxies large binaries from GitHub slowly or not at all); ?souqbase=<url> overrides both */
 /* commit whose models/souq/ matches this tree (a test checks it), so every preview shares one warm CDN copy */
-const SOUQ_ASSET_REF='d4bba9e';
+const SOUQ_ASSET_REF='d8d79e0';
 function sqtBase(){const q=/[?&]souqbase=([^&#]+)/.exec(location.search);if(q)return decodeURIComponent(q[1]).replace(/\/?$/,'/');
   const m=location.hostname==='raw.githack.com'&&/^\/([^/]+)\/([^/]+)\//.exec(location.pathname);
   return m?'https://cdn.jsdelivr.net/gh/'+m[1]+'/'+m[2]+'@'+SOUQ_ASSET_REF+'/models/souq/':'models/souq/'}
@@ -6197,7 +6197,10 @@ const _sqtCeil=souqCeil;souqCeil=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,
 /* inside the test block the world bounds are the block itself */
 const _sqtResolve=resolve;resolve=function(p,r){if(SOUQT.on&&W&&SOUQT.data&&sqtIn(p.x,p.z,2)){const B=W.bounds;W.bounds=sqtRect();try{return _sqtResolve(p,r)}finally{W.bounds=B}}return _sqtResolve(p,r)};
 const _sqtBuildWorld=buildWorld;buildWorld=function(key){const w=_sqtBuildWorld.apply(this,arguments);if(SOUQT.on&&key==='kw'){SOUQT.world=null;if(SOUQT.data)sqtApplyWorld();else sqtLoad().then(()=>{if(W===w)sqtApplyWorld()})}return w};
-function sqtGo(){const z=W&&W.zones&&W.zones.find(z=>z.id==='souqtest');if(z&&typeof teleport==='function'){SOUQT.arrived=true;teleport(z).then(()=>{yaw=-Math.PI/2;player.rot=yaw+Math.PI})}}
+/* arriving at either test point faces the buildings: east along the street, or south at the block from outside */
+const SQT_FACE={souqtest:-Math.PI/2,souqtest_out:Math.PI};
+const _sqtTeleport=teleport;teleport=function(z){const r=_sqtTeleport.apply(this,arguments);if(z&&SQT_FACE[z.id]!==undefined)Promise.resolve(r).then(()=>{yaw=SQT_FACE[z.id];player.rot=yaw+Math.PI});return r};
+function sqtGo(){const z=W&&W.zones&&W.zones.find(z=>z.id==='souqtest');if(z&&typeof teleport==='function'){SOUQT.arrived=true;teleport(z)}}
 /* live numbers for testing: frame time, draw calls, triangles, memory (Chrome only), load timings */
 const SQ_PERF={frames:[],last:0};
 function sqtPerfTick(){const n=performance.now();if(SQ_PERF.last)SQ_PERF.frames.push(n-SQ_PERF.last);SQ_PERF.last=n;if(SQ_PERF.frames.length>600)SQ_PERF.frames.shift()}

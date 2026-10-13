@@ -5,7 +5,7 @@
 /* models load next to the page; on a raw.githack preview pinned to a commit they come from jsDelivr instead
    (githack proxies large binaries from GitHub slowly or not at all); ?souqbase=<url> overrides both */
 /* commit whose models/souq/ matches this tree (a test checks it), so every preview shares one warm CDN copy */
-const SOUQ_ASSET_REF='d4bba9e';
+const SOUQ_ASSET_REF='d8d79e0';
 function sqtBase(){const q=/[?&]souqbase=([^&#]+)/.exec(location.search);if(q)return decodeURIComponent(q[1]).replace(/\/?$/,'/');
   const m=location.hostname==='raw.githack.com'&&/^\/([^/]+)\/([^/]+)\//.exec(location.pathname);
   return m?'https://cdn.jsdelivr.net/gh/'+m[1]+'/'+m[2]+'@'+SOUQ_ASSET_REF+'/models/souq/':'models/souq/'}
