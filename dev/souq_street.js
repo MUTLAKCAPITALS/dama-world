@@ -94,9 +94,10 @@ function sqtApplyWorld(){if(!SOUQT.on||!W||W.theme.key!=='kw'||!SOUQT.data)retur
   const d=SOUQT.data;
   for(const b of d.boxes){const [x0,x1,z0,z1,h]=b;addBox((x0+x1)/2,(z0+z1)/2,x1-x0,z1-z0,h)}
   const R=sqtRect();W.zones=W.zones.filter(z=>!/^souqtest/.test(z.id)).concat([{id:'souqtest',name:'شارع المباركية (تجربة)',rect:R,spawn:[d.spawn[0],0,d.spawn[1]],col:'#c9a36a'},
-    {id:'souqtest_out',name:'المباركية من الخارج (تجربة)',rect:R,spawn:[(d.rect[0]+d.rect[1])/2,0,d.rect[2]-11],col:'#c9a36a'}]);
+    {id:'souqtest_out',name:'المباركية من الخارج (تجربة)',rect:R,spawn:[-17.5,0,129],col:'#c9a36a'}]);
   if(!SOUQT.group)SOUQT.group=sqtBuild();
-  W.root.add(SOUQT.group)}
+  W.root.add(SOUQT.group);
+  try{const rg=sqtBuildRoute();if(rg)W.root.add(rg)}catch(e){console.warn('souq route',e)}}
 /* raised shop floors and platforms */
 const _sqtGroundY=groundY;groundY=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){let h=0;for(const r of SOUQT.data.raised)if(x>r[0]&&x<r[1]&&z>r[2]&&z<r[3]&&r[4]>h)h=r[4];return h}return _sqtGroundY(x,z)};
 /* pergola, shop and passage ceilings keep the third-person camera inside */
@@ -105,8 +106,43 @@ function sqtCeilAt(x,z){let c=0;for(const r of SOUQT.data.ceil)if(x>r[0]&&x<r[1]
    so walking into a shop the camera stays under the awning outside, and walking out it stays under the shop ceiling */
 const _sqtCeil=souqCeil;souqCeil=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){const fx=-Math.sin(yaw),fz=-Math.cos(yaw),d=(typeof camDist==='number'?camDist:3)+.4;let c=0;
     for(let k=0;k<=8;k++){const h=sqtCeilAt(x-fx*d*k/8,z-fz*d*k/8);if(h&&(!c||h<c))c=h}return c}return _sqtCeil(x,z)};
-/* inside the test block the world bounds are the block itself */
-const _sqtResolve=resolve;resolve=function(p,r){if(SOUQT.on&&W&&SOUQT.data&&sqtIn(p.x,p.z,2)){const B=W.bounds;W.bounds=sqtRect();try{return _sqtResolve(p,r)}finally{W.bounds=B}}return _sqtResolve(p,r)};
+/* ---- walking route city <-> souq (preview only) --------------------------------------------------------
+   Reuses the city's own pieces: its sidewalk material (walk_kw), its lamp() posts and the merge buildWorld uses.
+   The desert has dunes with collision and the camp at x~0; the only lane clear of both for the whole way is
+   x -17..-13, so the route is a 3.5 m paved walkway: off the west sidewalk at the end of the city road (z 44),
+   down that lane, across a small square north of the souq and along its west side to the passage door. */
+const SQ_ROUTE={
+  walks:[[-10.5,45.5,5,3],[-14.75,87,3.5,86],[-17.5,131,15,6],[-21.5,143,4,18],[-17.75,153.5,11.5,3]],
+  lamps:[[-12.4,52,-Math.PI/2],[-12.4,70,-Math.PI/2],[-12.4,88,-Math.PI/2],[-12.4,106,-Math.PI/2],[-12.4,124,-Math.PI/2],[-23.9,139,Math.PI/2],[-23.9,151,Math.PI/2]],
+  corridor:[-17.5,-12,100,134],
+  /* the passage doors stay as approved; walking into one passes through it (fade), both ways */
+  doors:[{out:[-12.7,-12.0],in:[-11.2,-10.75],z:[152.6,154.4],inPos:[-10.2,153.5],outPos:[-13.6,153.5],yawIn:-Math.PI/2,yawOut:Math.PI/2},
+         {out:[21.4,22.1],in:[20.05,20.6],z:[152.6,154.4],inPos:[19.4,153.5],outPos:[22.7,153.5],yawIn:Math.PI/2,yawOut:-Math.PI/2}],
+  group:null,world:null};
+function sqtBuildRoute(){if(SQ_ROUTE.world===W&&SQ_ROUTE.group)return SQ_ROUTE.group;const wm=MC['walk_kw'];if(!wm||typeof lamp!=='function')return null;
+  const st=W.stat,pg=W.poolGrp,tmp=new THREE.Group(),tmpN=new THREE.Group();W.stat=tmp;W.poolGrp=tmpN;
+  try{for(const [cx,cz,w,d] of SQ_ROUTE.walks)P(scaleUV(new THREE.BoxGeometry(w,.04,d),w/4,d/3),wm,cx,.02,cz,{cast:false});
+    for(const [x,z,f] of SQ_ROUTE.lamps)lamp(x,z,f)}finally{W.stat=st;W.poolGrp=pg}
+  const g=new THREE.Group();g.name='souqRoute';g.add(mergeGroup(tmp));const night=mergeGroup(tmpN);night.visible=!!(W.night&&W.night.visible);g.add(night);
+  SQ_ROUTE.group=g;SQ_ROUTE.world=W;return g}
+const SQ_DOOR={busy:false,until:0,passes:0};
+function sqtPass(pos,y){SQ_DOOR.busy=true;const prev=mode;mode='toExplore';
+  Promise.resolve(typeof fade==='function'?fade(1):0).then(()=>{player.pos.x=pos[0];player.pos.z=pos[1];player.pos.y=groundY(pos[0],pos[1]);yaw=y;player.rot=y+Math.PI;
+    if(typeof camCur!=='undefined'&&typeof camDist!=='undefined')camCur=camDist;mode='explore';SQ_DOOR.passes++;return typeof fade==='function'?fade(0):0})
+   .finally(()=>{if(mode==='toExplore')mode=prev;SQ_DOOR.busy=false;SQ_DOOR.until=performance.now()+900})}
+function sqtDoorTick(){if(!SOUQT.on||!SOUQT.data||SQ_DOOR.busy||typeof mode==='undefined'||mode!=='explore'||!W||!W.theme||W.theme.key!=='kw'||typeof player==='undefined'||!player.pos)return;
+  if(performance.now()<SQ_DOOR.until)return;const x=player.pos.x,z=player.pos.z;
+  for(const d of SQ_ROUTE.doors){if(z<d.z[0]||z>d.z[1])continue;
+    if(x>=d.out[0]&&x<=d.out[1])return sqtPass(d.inPos,d.yawIn);
+    if(x>=d.in[0]&&x<=d.in[1])return sqtPass(d.outPos,d.yawOut)}}
+/* the walkable world is the game's own bounds plus the route corridor plus the souq block with its apron */
+const _sqtResolve=resolve;resolve=function(p,r){if(!(SOUQT.on&&W&&W.theme&&W.theme.key==='kw'&&SOUQT.data))return _sqtResolve(p,r);
+  const B=W.bounds,A=[B,SQ_ROUTE.corridor,sqtRect()];
+  W.bounds=[Math.min(...A.map(a=>a[0])),Math.max(...A.map(a=>a[1])),Math.min(...A.map(a=>a[2])),Math.max(...A.map(a=>a[3]))];
+  let res;try{res=_sqtResolve(p,r)}finally{W.bounds=B}
+  if(!A.some(a=>p.x>=a[0]+r-1e-6&&p.x<=a[1]-r+1e-6&&p.z>=a[2]+r-1e-6&&p.z<=a[3]-r+1e-6)){let best=null,bd=Infinity;
+    for(const a of A){const x=Math.min(Math.max(p.x,a[0]+r),a[1]-r),z=Math.min(Math.max(p.z,a[2]+r),a[3]-r),dd=(x-p.x)**2+(z-p.z)**2;if(dd<bd){bd=dd;best=[x,z]}}p.x=best[0];p.z=best[1]}
+  return res};
 const _sqtBuildWorld=buildWorld;buildWorld=function(key){const w=_sqtBuildWorld.apply(this,arguments);if(SOUQT.on&&key==='kw'){SOUQT.world=null;if(SOUQT.data)sqtApplyWorld();else sqtLoad().then(()=>{if(W===w)sqtApplyWorld()})}return w};
 /* arriving at either test point faces the buildings: east along the street, or south at the block from outside */
 const SQT_FACE={souqtest:-Math.PI/2,souqtest_out:Math.PI};
@@ -114,7 +150,7 @@ const _sqtTeleport=teleport;teleport=function(z){const r=_sqtTeleport.apply(this
 function sqtGo(){const z=W&&W.zones&&W.zones.find(z=>z.id==='souqtest');if(z&&typeof teleport==='function'){SOUQT.arrived=true;teleport(z)}}
 /* live numbers for testing: frame time, draw calls, triangles, memory (Chrome only), load timings */
 const SQ_PERF={frames:[],last:0};
-function sqtPerfTick(){sqtLightTick();const n=performance.now();if(SQ_PERF.last)SQ_PERF.frames.push(n-SQ_PERF.last);SQ_PERF.last=n;if(SQ_PERF.frames.length>600)SQ_PERF.frames.shift()}
+function sqtPerfTick(){sqtLightTick();sqtDoorTick();const n=performance.now();if(SQ_PERF.last)SQ_PERF.frames.push(n-SQ_PERF.last);SQ_PERF.last=n;if(SQ_PERF.frames.length>600)SQ_PERF.frames.shift()}
 window.souqTestReport=function(){const f=SQ_PERF.frames.slice().sort((a,b)=>a-b),avg=f.reduce((a,b)=>a+b,0)/Math.max(1,f.length);
   return {inStreet:!!(player&&sqtIn(player.pos.x,player.pos.z)),fpsAvg:+(1000/avg).toFixed(1),fps1pctLow:+(1000/(f[Math.floor(f.length*.99)]||avg)).toFixed(1),
     draws:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,
