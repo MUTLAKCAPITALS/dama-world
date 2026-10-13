@@ -12,9 +12,10 @@ const SOUQT={on:/(^|[?&#])souqtest\b/.test(location.search+location.hash),
   loaderUrl:'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js',
   dracoUrl:'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js',
   dracoPath:'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/',draco:null,
-  lod1:38,gltf:{},data:null,group:null,world:null,pending:null,arrived:false,
+  lod1:38,pad:12,gltf:{},data:null,group:null,world:null,pending:null,arrived:false,
   stats:{t0:0,loader:0,json:0,files:{},bytes:0,ready:0,tris0:0,tris1:0,draws:0,errors:[]}};
-function sqtRect(){const d=SOUQT.data;return d&&d.rect}
+/* the walkable test area: the street block plus a 12 m apron of sand all round, so the buildings can be seen from every side */
+function sqtRect(){const d=SOUQT.data;if(!d)return null;const p=SOUQT.pad;return [d.rect[0]-p,d.rect[1]+p,d.rect[2]-p,d.rect[3]+p]}
 function sqtIn(x,z,pad){const r=sqtRect();pad=pad||0;return !!r&&x>r[0]-pad&&x<r[1]+pad&&z>r[2]-pad&&z<r[3]+pad}
 function sqtScript(src,have){return new Promise((res,rej)=>{if(window.THREE&&THREE[have])return res();const s=document.createElement('script');s.src=src;s.async=false;s.onload=()=>res();s.onerror=()=>rej(new Error(have));document.head.appendChild(s)})}
 function sqtLoader(){const l=new THREE.GLTFLoader();if(THREE.DRACOLoader){if(!SOUQT.draco){SOUQT.draco=new THREE.DRACOLoader();SOUQT.draco.setDecoderPath(SOUQT.dracoPath)}l.setDRACOLoader(SOUQT.draco)}return l}
@@ -56,7 +57,8 @@ function sqtBuild(){const root=new THREE.Group();root.name='souqTest';
 function sqtApplyWorld(){if(!SOUQT.on||!W||W.theme.key!=='kw'||!SOUQT.data)return;if(SOUQT.world===W)return;SOUQT.world=W;
   const d=SOUQT.data;
   for(const b of d.boxes){const [x0,x1,z0,z1,h]=b;addBox((x0+x1)/2,(z0+z1)/2,x1-x0,z1-z0,h)}
-  W.zones=W.zones.filter(z=>z.id!=='souqtest').concat([{id:'souqtest',name:'شارع المباركية (تجربة)',rect:d.rect,spawn:[d.spawn[0],0,d.spawn[1]],col:'#c9a36a'}]);
+  const R=sqtRect();W.zones=W.zones.filter(z=>!/^souqtest/.test(z.id)).concat([{id:'souqtest',name:'شارع المباركية (تجربة)',rect:R,spawn:[d.spawn[0],0,d.spawn[1]],col:'#c9a36a'},
+    {id:'souqtest_out',name:'المباركية من الخارج (تجربة)',rect:R,spawn:[(d.rect[0]+d.rect[1])/2,0,d.rect[2]-6],col:'#c9a36a'}]);
   if(!SOUQT.group)SOUQT.group=sqtBuild();
   W.root.add(SOUQT.group)}
 /* raised shop floors and platforms */
@@ -64,7 +66,7 @@ const _sqtGroundY=groundY;groundY=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x
 /* pergola, shop and passage ceilings keep the third-person camera inside */
 const _sqtCeil=souqCeil;souqCeil=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){let c=0;for(const r of SOUQT.data.ceil)if(x>r[0]&&x<r[1]&&z>r[2]&&z<r[3]&&(!c||r[4]<c))c=r[4];return c}return _sqtCeil(x,z)};
 /* inside the test block the world bounds are the block itself */
-const _sqtResolve=resolve;resolve=function(p,r){if(SOUQT.on&&W&&SOUQT.data&&sqtIn(p.x,p.z,2)){const B=W.bounds;W.bounds=SOUQT.data.rect;try{return _sqtResolve(p,r)}finally{W.bounds=B}}return _sqtResolve(p,r)};
+const _sqtResolve=resolve;resolve=function(p,r){if(SOUQT.on&&W&&SOUQT.data&&sqtIn(p.x,p.z,2)){const B=W.bounds;W.bounds=sqtRect();try{return _sqtResolve(p,r)}finally{W.bounds=B}}return _sqtResolve(p,r)};
 const _sqtBuildWorld=buildWorld;buildWorld=function(key){const w=_sqtBuildWorld.apply(this,arguments);if(SOUQT.on&&key==='kw'){SOUQT.world=null;if(SOUQT.data)sqtApplyWorld();else sqtLoad().then(()=>{if(W===w)sqtApplyWorld()})}return w};
 function sqtGo(){const z=W&&W.zones&&W.zones.find(z=>z.id==='souqtest');if(z&&typeof teleport==='function'){SOUQT.arrived=true;teleport(z).then(()=>{yaw=-Math.PI/2;player.rot=yaw+Math.PI})}}
 /* live numbers for testing: frame time, draw calls, triangles, memory (Chrome only), load timings */

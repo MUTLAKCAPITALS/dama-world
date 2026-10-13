@@ -50,12 +50,13 @@ await test('collision, raised shop floors, ceilings and the test zone are applie
   t.buildWorld('sa');await settle();assert.equal(t.W.boxes.length,0,'not in Saudi');
   t.buildWorld('kw');await settle();
   assert.equal(t.W.boxes.length,DATA.boxes.length);
-  const z=t.W.zones.find(z=>z.id==='souqtest');assert(z,'zone registered');assert.deepEqual(z.rect,DATA.rect);
+  const z=t.W.zones.find(z=>z.id==='souqtest');assert(z,'zone registered');assert.equal(JSON.stringify(z.rect),JSON.stringify([DATA.rect[0]-12,DATA.rect[1]+12,DATA.rect[2]-12,DATA.rect[3]+12]));
+  const zo=t.W.zones.find(z=>z.id==='souqtest_out');assert(zo&&zo.spawn[2]<DATA.rect[2],'an outside viewpoint north of the block');
   const r=DATA.raised.reduce((a,b)=>b[4]>a[4]?b:a);const cx=(r[0]+r[1])/2,cz=(r[2]+r[3])/2;
   assert(t.groundY(cx,cz)>=r[4]-1e-9,'standing on a raised shop floor');
   assert.equal(t.groundY(0,0),.12,'outside the street the old ground rule is kept');
   const c=DATA.ceil[0];assert(t.souqCeil((c[0]+c[1])/2,(c[2]+c[3])/2)>0,'camera ceiling under the pergola');
-  const p={x:DATA.spawn[0],z:DATA.spawn[1]+500};t.resolve(p,.33);assert(p.z<=DATA.rect[3],'inside the block the block is the boundary');
+  const p={x:DATA.spawn[0],z:DATA.spawn[1]+500};t.resolve(p,.33);assert(p.z<=DATA.rect[3]+12,'the test area (block + apron) is the boundary');
   assert.equal(t.W.root.kids.length,1,'the street group is added once');
   assert.equal(t.teleported,null,'no teleport before the player is in explore mode with a character')});
 await test('a slow model holds the street back until everything has arrived (no half-built street)',async()=>{
