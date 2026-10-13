@@ -2,6 +2,18 @@
 <html lang="ar">
 <head>
 <meta charset="utf-8">
+<script>/* preview hosting only: raw.githack redirects images and videos to raw.githubusercontent.com. Without a CORS
+   request the browser taints them and WebGL refuses them as textures (black sky, ground and buildings). Ask for
+   CORS on that host only; the real hosting is unaffected. */
+(function(){if(location.hostname!=='raw.githack.com')return;
+  function fix(el){if(el&&!el.crossOrigin&&el.getAttribute&&el.getAttribute('crossorigin')===null){el.crossOrigin='anonymous';return true}return false}
+  [HTMLImageElement,HTMLMediaElement].forEach(function(C){var d=Object.getOwnPropertyDescriptor(C.prototype,'src');if(!d||!d.set)return;
+    Object.defineProperty(C.prototype,'src',{configurable:true,enumerable:d.enumerable,get:d.get,set:function(v){fix(this);d.set.call(this,v)}})});
+  var sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(n==='src'&&(this instanceof HTMLImageElement||this instanceof HTMLMediaElement))fix(this);return sa.call(this,n,v)};
+  new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){if(n.nodeType!==1)return;
+    var list=[n].concat([].slice.call(n.querySelectorAll?n.querySelectorAll('img,video,audio'):[]));
+    list.forEach(function(e){if(e instanceof HTMLImageElement&&fix(e)&&e.src){var s=e.src;e.src='';e.src=s}else if(e instanceof HTMLMediaElement&&fix(e)){try{e.load()}catch(x){}}})})})}).observe(document.documentElement,{childList:true,subtree:true})})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#07050a">
 <meta name="apple-mobile-web-app-capable" content="yes">
