@@ -6146,9 +6146,10 @@ function sqtFetchGLB(name){const t=performance.now(),url=SOUQT.base+'souq_'+name
     SOUQT.stats.bytes+=buf.byteLength;sqtLoader().parse(buf,SOUQT.base,g=>{SOUQT.stats.files[name]={ms:Math.round(performance.now()-t),kb:Math.round(buf.byteLength/1024)};res(g)},rej)}))}
 function sqtLoad(){if(SOUQT.pending)return SOUQT.pending;SOUQT.stats.t0=performance.now();
   SOUQT.pending=sqtScript(SOUQT.loaderUrl,'GLTFLoader').then(()=>sqtScript(SOUQT.dracoUrl,'DRACOLoader')).then(()=>{SOUQT.stats.loader=Math.round(performance.now()-SOUQT.stats.t0);
-    const j=fetch(SOUQT.base+'souq_collision.json').then(r=>r.json()).then(d=>{SOUQT.data=d;SOUQT.stats.json=Math.round(performance.now()-SOUQT.stats.t0)});
+    const j=fetch(SOUQT.base+'souq_collision.json').then(r=>r.json()).then(d=>{SOUQT._data=d;SOUQT.stats.json=Math.round(performance.now()-SOUQT.stats.t0)});
     return Promise.all([j].concat(SOUQT.files.map(n=>sqtFetchGLB(n).then(g=>{SOUQT.gltf[n]=g}).catch(e=>{SOUQT.stats.errors.push(String(e&&e.message||e))}))))})
-   .then(()=>{SOUQT.stats.ready=Math.round(performance.now()-SOUQT.stats.t0)},e=>{SOUQT.stats.errors.push(String(e&&e.message||e));console.warn('souq test load failed',e)});
+   /* publish the collision only when every model is in, so the street is never built half-loaded */
+   .then(()=>{SOUQT.data=SOUQT._data;SOUQT.stats.ready=Math.round(performance.now()-SOUQT.stats.t0)},e=>{SOUQT.stats.errors.push(String(e&&e.message||e));console.warn('souq test load failed',e)});
   return SOUQT.pending}
 /* one THREE.LOD per building: LOD0 near, LOD1 (decimated, same atlas) beyond SOUQT.lod1 metres */
 function sqtBuild(){const root=new THREE.Group();root.name='souqTest';

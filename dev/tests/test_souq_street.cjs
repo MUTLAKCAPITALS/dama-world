@@ -58,6 +58,15 @@ await test('collision, raised shop floors, ceilings and the test zone are applie
   const p={x:DATA.spawn[0],z:DATA.spawn[1]+500};t.resolve(p,.33);assert(p.z<=DATA.rect[3],'inside the block the block is the boundary');
   assert.equal(t.W.root.kids.length,1,'the street group is added once');
   assert.equal(t.teleported,null,'no teleport before the player is in explore mode with a character')});
+await test('a slow model holds the street back until everything has arrived (no half-built street)',async()=>{
+  let release;const gate=new Promise(r=>release=r);
+  const fetchImpl=u=>u.endsWith('.json')?Promise.resolve({json:()=>Promise.resolve(DATA)}):
+    (u.includes('bldC')?gate:Promise.resolve()).then(()=>({ok:true,arrayBuffer:()=>Promise.resolve(new ArrayBuffer(8))}));
+  const Obj=function(){this.children=[];this.position={set(){}};this.rotation={};this.add=o=>this.children.push(o)};
+  const GL=function(){this.parse=(b,base,ok)=>ok({scene:{traverse(){}}});this.setDRACOLoader=()=>{}};
+  const t=ctx('https://x/?souqtest',fetchImpl,{GLTFLoader:GL,DRACOLoader:function(){this.setDecoderPath=()=>{}},Group:Obj,Mesh:Obj,LOD:Obj,PlaneGeometry:function(){}});
+  t.buildWorld('kw');await settle();t.sqtApplyWorld();/* what the arrival poll does */assert.equal(t.W.boxes.length,0,'nothing applied while a building is still loading');
+  release();await settle();assert.equal(t.W.boxes.length,DATA.boxes.length,'applied once all models are in')});
 await test('collision data is sane: spawn is clear, the street lane is walkable, boxes are well formed',()=>{
   for(const b of DATA.boxes){assert(b[1]>b[0]&&b[3]>b[2]&&b[4]>0,'box '+b)}
   const inBox=(x,z)=>DATA.boxes.some(b=>x>b[0]-.33&&x<b[1]+.33&&z>b[2]-.33&&z<b[3]+.33);
