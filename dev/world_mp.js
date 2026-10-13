@@ -82,6 +82,8 @@ async function wmpJoin(manual){
       if(!wmpCurrent(gen)||s.metadata&&s.metadata.hasPendingWrites)return;
       WMP.rows=s.docs.map(d=>({slot:d.id,...d.data()}));
       const mine=WMP.rows.find(r=>r.slot===slot);
+      // A cached snapshot may still show this account's previous session; only server data can end the session.
+      if((!mine||mine.uid!==uid||mine.session!==session)&&s.metadata&&s.metadata.fromCache)return;
       if(!mine||mine.uid!==uid||mine.session!==session){
         if(WMP.rows.some(r=>r.uid===uid&&r.session!==session)){wmpStop(wmpError({code:'world-session'}));WMP.kicked=true;wmpUI();return}
         wmpFail({code:'world-lost'});return}

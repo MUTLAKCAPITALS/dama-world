@@ -9,13 +9,17 @@ const root=path.resolve(__dirname,'../..'),source=fs.readFileSync(root+'/dev/wor
 const clients=[],nativePCs=[],timers=new Set();let env,passed=0,frames=null;
 function wire(v){if(Array.isArray(v))return Array.from(v,wire);if(v&&typeof v==='object'&&v.constructor?.name==='Object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,wire(x)]));return v}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function snapshot(){return JSON.stringify(clients.map(w=>({uid:w.uid,slot:w.W.slot,err:w.W.error,avatars:[...w.W.avatars.keys()],peers:[...w.W.peers.values()].map(p=>({uid:p.uid,state:p.state,dc:p.dc&&p.dc.readyState,n:p.n,pc:p.pc&&p.pc.connectionState}))})))}
+function snapshot(){return JSON.stringify(clients.map(w=>({uid:w.uid,slot:w.W.slot,err:w.W.error,notes:w.notices.slice(-3),avatars:[...w.W.avatars.keys()],peers:[...w.W.peers.values()].map(p=>({uid:p.uid,state:p.state,dc:p.dc&&p.dc.readyState,n:p.n,pc:p.pc&&p.pc.connectionState}))})))}
 async function until(check,label,ms=20000){const end=Date.now()+ms;while(Date.now()<end){if(check())return;await sleep(50)}console.error('WORLD STATE',snapshot());throw Error(label+' timed out')}
 function checked(name){passed++;console.log('PASS',name)}
 const vec=(x=0,y=0,z=0)=>({x,y,z,set(a,b,c){this.x=a;this.y=b;this.z=c;return this},copy(o){this.x=o.x;this.y=o.y;this.z=o.z;return this},distanceToSquared(o){return(this.x-o.x)**2+(this.y-o.y)**2+(this.z-o.z)**2},addScaledVector(v,k){this.x+=v.x*k;this.y+=v.y*k;this.z+=v.z*k;return this},project(){return this},clone(){return vec(this.x,this.y,this.z)}});
 function client(uid,name,{webrtc=true}={}){
   const db=env.authenticatedContext(uid,{firebase:{sign_in_provider:'password'}}).firestore(),notices=[],rooms=[],closed=[];
-  const sdk={collection:n=>db.collection(n),runTransaction:f=>db.runTransaction(tx=>f({get:r=>tx.get(r),set:(r,v)=>tx.set(r,wire(v)),update:(r,v)=>tx.update(r,wire(v)),delete:r=>tx.delete(r)}))};
+  // Values built inside the vm realm are converted to plain objects, as a browser page would pass them.
+  const raw=r=>r&&r._d||r,doc=d=>({_d:d,id:d.id,path:d.path,collection:n=>col(d.collection(n)),get:o=>d.get(o),set:(v,o)=>d.set(wire(v),o),update:v=>d.update(wire(v)),delete:()=>d.delete(),onSnapshot:(...a)=>d.onSnapshot(...a)});
+  const query=q=>({limit:n=>query(q.limit(n)),where:(...a)=>query(q.where(...a)),get:o=>q.get(o),onSnapshot:(...a)=>q.onSnapshot(...a)});
+  const col=c=>Object.assign(query(c),{doc:id=>doc(c.doc(id)),add:v=>c.add(wire(v))});
+  const sdk={collection:n=>col(db.collection(n)),runTransaction:f=>db.runTransaction(tx=>f({get:r=>tx.get(raw(r)),set:(r,v)=>tx.set(raw(r),wire(v)),update:(r,v)=>tx.update(raw(r),wire(v)),delete:r=>tx.delete(raw(r))}))};
   const PC=webrtc?function(cfg){const pc=new rtc.RTCPeerConnection({iceServers:[],bundlePolicy:'max-bundle'});nativePCs.push(pc);return pc}:undefined;
   const c=vm.createContext({console,Date,Math,JSON,Set,Map,Array,Object,Number,String,Promise,Uint8Array,Error,crypto:require('node:crypto').webcrypto,performance,
     setTimeout,clearTimeout,setInterval:(f,ms)=>{const t=setInterval(f,ms);timers.add(t);return t},clearInterval,
