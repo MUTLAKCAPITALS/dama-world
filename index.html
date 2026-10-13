@@ -5059,6 +5059,19 @@ const _rs33=renderSheet;renderSheet=function(){const r=_rs33.apply(this,argument
 /* نافذة الصوت باللوبي: كل الأصوات */
 lbSound=function(){showLayer('<div class="scrim" data-x="1"><div class="card dlg v7snd" style="max-height:92vh;overflow:auto"><h3>الصوت</h3>'+sndHtml()+'<div class="row" style="margin-top:6px"><button class="pbtn" data-a="x">تم</button></div></div></div>',
   {x:()=>closeLayer()},()=>{if(LOBBY.on&&mode==='lobby')lbBuildUI()});sndBind($('#layer'))};
+/* ================= v34: كل الرجال بدشداشة نفس الموديل، كل النساء بعباية وشيلة، والسياح على موديلاتهم ================= */
+/* بدون حد أقصى: كل شخصية تاخذ الموديل الحقيقي حقها */
+skWants=function(){return true};
+/* عشان ما يثقل الجوال: الشخصية اللي برّا الشاشة ما تنرسم */
+{const _si=skInstance;skInstance=function(D){if(!D._bs34){try{D.geo.computeBoundingSphere();D.geo.boundingSphere.radius*=1.7}catch(e){}D._bs34=1}
+  const I=_si.apply(this,arguments);try{I.mesh.frustumCulled=true;if(S.settings.quality==='low')I.mesh.castShadow=false}catch(e){}return I}}
+/* البعيدين: نحدّث حركتهم كل فريمين بدال كل فريم */
+{const _ac=animChar;let fr=0;animChar=function(ch,dt,t,near){const I=ch.userData&&ch.userData.sk;
+  if(I&&near===false&&ch!==(typeof player!=='undefined'&&player.ch)){I._acc=(I._acc||0)+dt;if(((I._f=(I._f||0)+1)&1)){return}dt=I._acc;I._acc=0;arguments[1]=dt}
+  else if(I)I._acc=0;return _ac.apply(this,arguments)}}
+setTimeout(()=>{try{skUpgradeAll()}catch(e){}},500);
+/* أي سائح ما له موديل (مثلاً بدلة) ياخذ موديل السائح أو السائحة */
+{const _sk=skKind;skKind=function(look){const k=_sk.apply(this,arguments);if(k||!look||look===S.look)return k;return look.g==='f'?'tf':look.g==='m'?'tm':null}}
 
 /* ================= v12: ترتيب الملف الشخصي (شاشة وحدة + عرض حي للشخصية) ================= */
 function pfLive(){return typeof LBV!=='undefined'&&LBV.vis&&LBV.ok&&!LBV.failed}
