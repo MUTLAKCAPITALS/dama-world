@@ -20,7 +20,7 @@ function teleport(z){teleported=z;return Promise.resolve()}
 function pbr(k,o){return {k,o}}
 `;
 function ctx(url,fetchImpl,threeImpl){
-  const c=vm.createContext({console:{log:console.log,error:console.error,warn(){}},Math,Promise,JSON,setInterval:()=>0,clearInterval(){},performance:{now:()=>0},
+  const c=vm.createContext({console:{log:console.log,error:console.error,warn(){}},Math,Promise,JSON,setInterval:()=>0,clearInterval(){},setTimeout:()=>0,navigator:{userAgent:(url.match(/ua=([^&]+)/)||[])[1]?decodeURIComponent(url.match(/ua=([^&]+)/)[1]):'node',maxTouchPoints:0},performance:{now:()=>0},
     location:{search:url.includes('?')?url.slice(url.indexOf('?')):'',hash:url.includes('#')?url.slice(url.indexOf('#')):''},
     window:{},document:{createElement:()=>({}),head:{appendChild(s){s.onload&&s.onload()}}},fetch:fetchImpl||(()=>Promise.reject(new Error('no fetch'))),
     renderer:{capabilities:{getMaxAnisotropy:()=>16},info:{render:{calls:0,triangles:0},memory:{geometries:0,textures:0}},getPixelRatio:()=>1},
@@ -46,6 +46,12 @@ await test('models load next to the page, or from one pinned jsDelivr copy on gi
   for(const f of fs.readdirSync(root+'/models/souq')){let old;try{old=execFileSync('git',['show',ref+':models/souq/'+f],{cwd:root,maxBuffer:64<<20})}catch(e){if(/not a git repository|unknown revision/.test(String(e.stderr||e)))return;throw new Error('models/souq/'+f+' is not in '+ref+': update SOUQ_ASSET_REF')}
     assert(Buffer.compare(old,fs.readFileSync(root+'/models/souq/'+f))===0,'models/souq/'+f+' differs from '+ref+': commit the models, then point SOUQ_ASSET_REF at that commit');same++}
   assert(same>=9,'all street files checked')});
+await test('phones and tablets load the light copies; desktops the full ones; ?souqmobile overrides',()=>{
+  assert.equal(ctx('https://x/?souqtest').SOUQT.mobile,false);
+  assert.equal(ctx('https://x/?souqtest&ua='+encodeURIComponent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')).SOUQT.mobile,true);
+  assert.equal(ctx('https://x/?souqtest&souqmobile=1').SOUQT.mobile,true);
+  for(const n of ['ground','hero','heroprops','bldB','bldC','endE','endW','street']){if(!fs.existsSync(root+'/models/souq/souq_'+n+'_m.glb'))continue;/* light copies are generated with the next export */const b=fs.readFileSync(root+'/models/souq/souq_'+n+'_m.glb');
+    const jl=b.readUInt32LE(12),j=JSON.parse(b.subarray(20,20+jl).toString());assert(j.images.every(i=>i.mimeType==='image/jpeg'),n);assert(b.length<1.2*1024*1024,n+'_m size '+b.length)}});
 await test('?souqtest turns it on (query or hash)',()=>{
   assert.equal(ctx('https://x/?souqtest=1').SOUQT.on,true);assert.equal(ctx('https://x/#souqtest').SOUQT.on,true)});
 await test('collision, raised shop floors, ceilings and the test zone are applied to the Kuwait world only',async()=>{

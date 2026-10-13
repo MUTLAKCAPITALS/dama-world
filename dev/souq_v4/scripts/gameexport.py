@@ -189,6 +189,51 @@ def _img(name, w, h, noncolor):
     im.colorspace_settings.name = 'Non-Color' if noncolor else 'sRGB'
     return im
 
+AO_DISTANCE = 4.0     # metres: corners, arcades, shop interiors and the street under the pergola see less sky
+
+def _bake_ao_into_orm(o, rough, hide=None, mats_t=()):
+    """Sky visibility (ambient occlusion) baked at the roughness size and packed glTF-style into one ORM
+    image: R = occlusion, G = roughness, B = metal (0). Costs no extra texture in the game.
+    The scene stays visible (neighbouring buildings and the pergola occlude); objects in `hide`
+    (sources of a selected-to-active bake, which sit on top of the target) are hidden for this pass."""
+    import numpy as np
+    sc = bpy.context.scene; vl = bpy.context.view_layer
+    w, h = rough.size
+    ao = _img('GX_%s_ao' % o.name, w, h, True)
+    nodes = []
+    for m in mats_t:
+        n = m.node_tree.nodes.new('ShaderNodeTexImage'); n.image = ao; n.name = '__bake__'
+        m.node_tree.nodes.active = n; nodes.append((m, n))
+    ls = sc.world.light_settings; d0 = ls.distance; ls.distance = AO_DISTANCE
+    hidden = [x for x in (hide or []) if not x.hide_render]
+    for x in hidden: x.hide_render = True
+    try:
+        with bpy.context.temp_override(**_ctx()):
+            for x in vl.objects: x.select_set(False)
+            o.select_set(True); vl.objects.active = o
+            bpy.ops.object.bake(type='AO', margin=6, use_clear=True)
+    finally:
+        ls.distance = d0
+        for x in hidden: x.hide_render = False
+        for m, n in nodes: m.node_tree.nodes.remove(n)
+    a = np.empty(w * h * 4, dtype=np.float32); ao.pixels.foreach_get(a)
+    r = np.empty(w * h * 4, dtype=np.float32); rough.pixels.foreach_get(r)
+    a = a.reshape(-1, 4); r = r.reshape(-1, 4)
+    orm = np.stack([a[:, 0], r[:, 1], np.zeros(len(a), np.float32), np.ones(len(a), np.float32)], 1).ravel()
+    out = _img('GX_%s_orm' % o.name, w, h, True); out.pixels.foreach_set(orm)
+    for im in (ao, out):
+        im.filepath_raw = os.path.join(OUT, 'bake', im.name + '.png'); im.file_format = 'PNG'; im.save()
+    log('%s: AO mean %.2f' % (o.name, float(a[:, 0].mean())))
+    return out
+
+def _gltf_output_group():
+    """The node group the glTF exporter reads extra outputs from (here: Occlusion)."""
+    g = bpy.data.node_groups.get('glTF Material Output')
+    if g is None:
+        g = bpy.data.node_groups.new('glTF Material Output', 'ShaderNodeTree')
+        g.interface.new_socket('Occlusion', in_out='INPUT', socket_type='NodeSocketFloat')
+    return g
+
 def bake_maps(o, sizes, samples=24, selected=None, extrusion=.15):
     """Bake colour / roughness / normal for o (or from `selected` onto o). sizes = (col, nrm, rough) or
     ((w,h), (w,h), (w,h)). Returns the three images (already saved as PNG next to the GLBs)."""
@@ -245,6 +290,7 @@ def bake_maps(o, sizes, samples=24, selected=None, extrusion=.15):
             im.filepath_raw = os.path.join(OUT, 'bake', im.name + '.png'); im.file_format = 'PNG'
             os.makedirs(os.path.join(OUT, 'bake'), exist_ok=True); im.save()
             res.append(im)
+        res[2] = _bake_ao_into_orm(o, res[2], srcs if selected else None, mats_t)
     finally:
         sc.cycles.samples = old
         for m, nd, to in swapped:
@@ -270,6 +316,8 @@ def game_material(name, col, nrm, rough, metal=0.0):
     # glTF wants roughness in G of a metallicRoughness map: route through Separate Color for the exporter
     rt = tex(rough); sep = t.nodes.new('ShaderNodeSeparateColor'); t.links.new(rt.outputs[0], sep.inputs[0])
     t.links.new(sep.outputs[1], p.inputs['Roughness'])
+    gg = t.nodes.new('ShaderNodeGroup'); gg.node_tree = _gltf_output_group()      # R of the same ORM image = occlusion
+    t.links.new(sep.outputs[0], gg.inputs['Occlusion'])
     nm = t.nodes.new('ShaderNodeNormalMap'); t.links.new(tex(nrm).outputs[0], nm.inputs['Color']); t.links.new(nm.outputs[0], p.inputs['Normal'])
     p.inputs['Metallic'].default_value = metal
     t.links.new(p.outputs[0], out.inputs['Surface'])
