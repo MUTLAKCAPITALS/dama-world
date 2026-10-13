@@ -302,6 +302,111 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Real multiplayer world: eight authenticated seats per country/channel, one live seat per account.
+    // Movement normally travels over direct WebRTC data channels; seats hold a throttled fallback pose.
+    function worldSeat(space, slot) { return /databases/$(database)/documents/worlds/$(space)/seats/$(slot); }
+    function worldSpace(space) { return space.matches('^(kw|sa|bh|in|tr)_([1-9]|10)$'); }
+    function worldFresh(r) { return r.at > request.time - duration.value(70,'s'); }
+    function worldLook(l) {
+      return l is map && l.keys().hasOnly(['skin','face','hair','hairColor','outfit','outfitColor','acc','eye','lash','g'])
+        && l.keys().hasAll(['skin','face','hair','hairColor','outfit','outfitColor','acc','eye','lash','g'])
+        && l.skin is int && l.skin >= 0 && l.skin <= 5 && l.face is int && l.face >= 0 && l.face <= 3
+        && l.hair is int && l.hair >= 0 && l.hair <= 5 && l.hairColor is int && l.hairColor >= 0 && l.hairColor <= 6
+        && l.outfitColor is int && l.outfitColor >= 0 && l.outfitColor <= 9 && l.eye is int && l.eye >= 0 && l.eye <= 4
+        && l.lash is int && l.lash >= 0 && l.lash <= 1 && l.g in ['m','f']
+        && l.outfit in ['dishdasha','abaya','casual','jersey','kimono','suit']
+        && l.acc in ['none','ghutra','shayla','cap','headband','glasses','hat'];
+    }
+    function worldPose(r) {
+      return (r.x is int || r.x is float) && r.x >= -200 && r.x <= 200 && (r.z is int || r.z is float) && r.z >= -200 && r.z <= 200
+        && (r.r is int || r.r is float) && r.r >= -4 && r.r <= 4 && r.st in ['idle','walk','run','sit','wave','match'];
+    }
+    match /worldUsers/{uid} {
+      function shape(r) { return r.keys().hasOnly(['space','slot','session']) && r.keys().hasAll(['space','slot','session'])
+        && r.space is string && worldSpace(r.space) && r.slot is string && r.slot.matches('^[0-7]$') && r.session is string && r.session.matches('^[a-f0-9]{32}$'); }
+      function linked(r) { let s = getAfter(worldSeat(r.space,r.slot)).data; return s.uid == uid && s.session == r.session; }
+      allow get: if registered() && request.auth.uid == uid;
+      allow create, update: if registered() && notBanned() && request.auth.uid == uid && shape(request.resource.data) && linked(request.resource.data);
+      allow delete: if registered() && request.auth.uid == uid
+        && (!existsAfter(worldSeat(resource.data.space,resource.data.slot))
+          || getAfter(worldSeat(resource.data.space,resource.data.slot)).data.session != resource.data.session);
+    }
+    match /worlds/{space}/seats/{slot} {
+      function shape(r) {
+        return worldSpace(space) && slot.matches('^[0-7]$')
+          && r.keys().hasOnly(['uid','name','nameKey','session','at','look','x','z','r','st'])
+          && r.keys().hasAll(['uid','name','nameKey','session','at','look','x','z','r','st'])
+          && r.uid == request.auth.uid && r.session is string && r.session.matches('^[a-f0-9]{32}$') && r.at == request.time
+          && worldLook(r.look) && worldPose(r);
+      }
+      function linked(r) { let m = getAfter(/databases/$(database)/documents/worldUsers/$(request.auth.uid)).data;
+        return m.space == space && m.slot == slot && m.session == r.session; }
+      function claim(r) { return shape(r) && linked(r) && named(r.uid,r.name,r.nameKey); }
+      allow get: if registered() && notBanned() && worldSpace(space);
+      allow list: if registered() && notBanned() && worldSpace(space) && request.query.limit <= 8;
+      allow create: if registered() && notBanned() && claim(request.resource.data);
+      // Updates keep identity and session fixed and are limited to one write per two seconds.
+      allow update: if registered() && notBanned()
+        && ((resource.data.uid == request.auth.uid && worldFresh(resource.data) && changesOnly(['at','look','x','z','r','st'])
+              && shape(request.resource.data) && linked(request.resource.data) && request.time >= resource.data.at + duration.value(2,'s'))
+          || ((resource.data.uid == request.auth.uid || !worldFresh(resource.data)) && claim(request.resource.data)));
+      allow delete: if registered() && resource.data.uid == request.auth.uid;
+
+      match /signals/{peerSlot} {
+        function pair() {
+          let a = get(worldSeat(space,slot)).data;
+          let b = get(worldSeat(space,peerSlot)).data;
+          return slot != peerSlot && a.uid != b.uid && worldFresh(a) && worldFresh(b)
+            && request.auth.uid in [a.uid,b.uid] && voiceUnblocked(a.uid,b.uid);
+        }
+        function valid(r) {
+          let a = get(worldSeat(space,slot)).data;
+          let b = get(worldSeat(space,peerSlot)).data;
+          return request.auth.uid == a.uid && r.keys().hasOnly(['fromSession','toSession','n','sdp','type','ice','at'])
+            && r.fromSession == a.session && r.toSession == b.session && r.at == request.time
+            && r.n is int && r.n >= 0 && r.n <= 50
+            && r.type == (slot < peerSlot ? 'offer' : 'answer') && r.sdp is string && r.sdp.size() <= 16384
+            && r.ice is list && r.ice.size() <= 32;
+        }
+        allow get: if registered() && notBanned() && worldSpace(space) && peerSlot.matches('^[0-7]$') && pair();
+        allow create, update: if registered() && notBanned() && worldSpace(space) && peerSlot.matches('^[0-7]$') && pair() && valid(request.resource.data);
+        allow delete: if registered() && get(worldSeat(space,slot)).data.uid == request.auth.uid;
+      }
+    }
+    // One outstanding challenge per sender, readable only by its two players, answered only by the recipient.
+    match /worldChallenges/{from} {
+      function shape(r) {
+        return r.keys().hasOnly(['from','fromName','fromKey','to','toName','space','toSlot','code','table','state','at'])
+          && r.keys().hasAll(['from','fromName','fromKey','to','toName','space','toSlot','code','table','state','at'])
+          && r.from == from && r.to is string && r.to != from && r.to.matches('^[A-Za-z0-9_-]{1,128}$')
+          && r.toName is string && r.toName.size() <= 14 && r.space is string && worldSpace(r.space)
+          && r.toSlot is string && r.toSlot.matches('^[0-7]$') && r.code is string && r.code.matches('^[A-Z0-9]{4}$')
+          && r.table is int && r.table >= 0 && r.table <= 63 && r.state in ['pending','accepted','declined','cancelled'];
+      }
+      function sendable(r) {
+        let me = get(/databases/$(database)/documents/worldUsers/$(request.auth.uid)).data;
+        let mine = get(worldSeat(me.space,me.slot)).data;
+        let target = get(worldSeat(r.space,r.toSlot)).data;
+        let room = get(/databases/$(database)/documents/rooms/$(r.code)).data;
+        return shape(r) && r.state == 'pending' && r.at == request.time && named(from,r.fromName,r.fromKey)
+          && me.space == r.space && mine.uid == from && mine.session == me.session && worldFresh(mine)
+          && target.uid == r.to && target.name == r.toName && worldFresh(target)
+          && room.host == from && room.state == 'wait' && room.guest == null && voiceUnblocked(from,r.to);
+      }
+      allow get: if registered() && notBanned() && (request.auth.uid == from
+        || (exists(/databases/$(database)/documents/worldChallenges/$(from)) && resource.data.to == request.auth.uid));
+      allow list: if registered() && notBanned() && request.query.limit <= 5 && resource.data.to == request.auth.uid;
+      allow create: if registered() && notBanned() && request.auth.uid == from && sendable(request.resource.data);
+      allow update: if registered() && notBanned() && (
+        (request.auth.uid == from && (resource.data.state != 'pending' || request.time > resource.data.at + duration.value(10,'s'))
+          && sendable(request.resource.data))
+        || (request.auth.uid == from && resource.data.state == 'pending' && request.resource.data.state == 'cancelled' && changesOnly(['state']))
+        || (request.auth.uid == resource.data.to && resource.data.state == 'pending' && changesOnly(['state'])
+          && (request.resource.data.state == 'declined'
+            || (request.resource.data.state == 'accepted' && request.time < resource.data.at + duration.value(60,'s')))));
+      allow delete: if registered() && request.auth.uid == from;
+    }
+
     match /rooms/{roomId} {
       function member(r) { return request.auth.uid == r.host || request.auth.uid == r.get('guest', null); }
       function validCreate(r) {
@@ -353,13 +458,17 @@ service cloud.firestore {
         return a.state == 'play' && changesOnly(host ? ['vOffer','hIce'] : ['vAnswer','gIce'])
           && (sdp == null || (sdp is string && sdp.size() <= 65536)) && ice is list && ice.size() <= 128;
       }
+      // A player may resign only for the opponent, and may claim a win only right after making the last move.
       function finish(a, b) {
         // Full board legality and competitive ratings still need a trusted game server.
         let r = b.get('result', {});
         return a.state == 'play' && changesOnly(['state','result']) && b.state == 'done'
           && r.keys().hasOnly(['winner','reason','plies']) && r.plies == a.moves.size()
           && (r.winner == null || r.winner == a.host || r.winner == a.guest)
-          && r.reason is string && r.reason.size() <= 120;
+          && r.reason is string && r.reason.size() <= 120
+          && (r.reason != 'استسلام' || (r.winner != null && r.winner != request.auth.uid))
+          && (r.winner != request.auth.uid || r.reason == 'استسلام'
+            || (a.moves.size() > 0 && a.moves[a.moves.size() - 1].by == request.auth.uid));
       }
       function leaving(a, b) {
         return a.state == 'play' && changesOnly(['state','closedBy']) && b.state == 'closed' && b.closedBy == request.auth.uid;
