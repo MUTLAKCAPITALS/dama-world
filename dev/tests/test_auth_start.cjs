@@ -9,7 +9,7 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const account = fs.readFileSync(path.join(root,'dev/v29_account.js'),'utf8');
 function accountFunction(name){const m=new RegExp('(?:async )?function '+name+'\\s*\\(').exec(account);assert(m);for(let e=account.indexOf('}',m.index);e>=0;e=account.indexOf('}',e+1)){const s=account.slice(m.index,e+1);try{new vm.Script('('+s+')');return s}catch{}}throw Error(name)}
 const accountProgram=account.slice(account.indexOf('const ACC='),account.indexOf('(function(){const css='))+'\n'+
-  ['accBoot','accSync','accSync0','accAdopt','accRaw','accUpload'].map(accountFunction).join('\n')+'\nwindow.DAMA_AUTH.attach({retry:accBoot,enter:window.testHooks.enter});';
+  ['accBoot','accSync','accSync0','accAdopt','accRaw','accBytes','accBackup','accSaveStatus','accUpload'].map(accountFunction).join('\n')+'\nwindow.DAMA_AUTH.attach({retry:accBoot,enter:window.testHooks.enter});';
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function settle() { for (let i=0;i<12;i++) await tick(); }
 
@@ -59,7 +59,7 @@ function make(options={}) {
       body:{classList:{remove:()=>{}}},head:{appendChild(el){if(el.src){calls.push(['dependency',el.src]);queueMicrotask(()=>el.onload?.())}else{gameLoads++;if(options.actualAccount||ctx.DAMA_AUTH.guest)ctx.S=JSON.parse(disk.get(ctx.DAMA_AUTH.saveKey)||'{"name":"ضيف","coins":150}');try{vm.runInContext(el.textContent,ctx)}catch{}}}}},
     location:{reload(){reloads++}},
     S:JSON.parse(disk.get('damaworld.v1')||'{}'),Date,
-    ONL:{user:auth.currentUser,auth,db:{collection:()=>({doc:()=>({get:async()=>{calls.push(['cloud-read']);if(options.syncResult==='fail')throw Error('offline');return{exists:true,metadata:{fromCache:false},data:()=>cloud}},set:async data=>{calls.push(['cloud-write']);Object.assign(cloud,data)}})})}},
+    ONL:{user:auth.currentUser,auth,db:{runTransaction:async callback=>callback({get:ref=>ref.get(),set:(ref,data)=>ref.set(data)}),collection:()=>({doc:()=>({get:async()=>{calls.push(['cloud-read']);if(options.syncResult==='fail')throw Error('offline');return{exists:true,metadata:{fromCache:false},data:()=>cloud}},set:async data=>{calls.push(['cloud-write']);Object.assign(cloud,data)}})})}},
     onlInit:async()=>{calls.push(['onl-init']);ctx.ONL.user=auth.currentUser},accUI(){},updateProfile(){},toast(){},accNameDlg(){calls.push(['name-dialog'])},level:()=>1,
     sessionStorage:{getItem:k=>session.get(k)||null,setItem:(k,v)=>session.set(k,v),removeItem:k=>session.delete(k)},
     setTimeout:(f,ms)=>{timers.set(++timer,{f,ms});return timer},clearTimeout:id=>timers.delete(id)});
@@ -219,6 +219,16 @@ async function test(name,fn){await fn();console.log('PASS',name);count++}
   await test('refreshing a guest offers the choice again; it does not bypass sign-in',async()=>{
     const disk=new Map();const first=make({disk});await settle();await first.click('authGuest');assert.equal(first.stats().entered,true);
     const next=make({disk});await settle();assert.equal(next.stats().state,'login');assert.equal(next.stats().gameLoads,0);
+  });
+  await test('DW24 context loss exposes reload and pauses world input',async()=>{
+    const w=make({user:{uid:'member',isAnonymous:false}});await settle();assert(w.stats().entered);
+    w.ctx.DAMA_AUTH.graphicsLost();assert.equal(w.stats().state,'error');assert.equal(w.ctx.DAMA_AUTH.promptOpen,true);
+    await w.click('authRetry');assert.equal(w.stats().reloads,1);
+  });
+  await test('switching accounts backs up the previous owner before restoring the new one',async()=>{
+    const old=JSON.stringify({coins:777,editAt:10000});const disk=new Map([['damaworld.v1',old],['acc.owner','old-user']]);
+    const w=make({disk,user:{uid:'new-user',isAnonymous:false}});await settle();
+    assert.equal(disk.get('acc.backup.old-user'),old);assert.equal(disk.get('acc.pendingRestore'),'new-user');assert.equal(disk.has('damaworld.v1'),false);
   });
   console.log(`${count} entry checks passed`);
 })().catch(error=>{console.error(error);process.exitCode=1});

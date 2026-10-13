@@ -1,5 +1,5 @@
 /* ================= v29: حسابات حقيقية — ضيف باسم تلقائي، تسجيل Google/إيميل، اسم فريد مع اقتراحات، حفظ بالسيرفر ================= */
-const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0,pendingCtx:null};
+const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0,pendingCtx:null,baseRev:0,baseSave:null,uploading:null,saveError:null,conflict:false,signingOut:false};
 /* أساس المقارنة: editAt = وقت آخر تعديل حقيقي للتقدم، وينحفظ مع التقدم فيبقى صحيح بعد إعادة التشغيل.
    ما يتحرك وقت التشغيل ولا وقت ما يكون الحساب مو متزامن مع السيرفر. (الحفظات القديمة بدون editAt: نستخدم savedAt) */
 const ACC_KEY=(window.DAMA_AUTH&&window.DAMA_AUTH.saveKey)||'damaworld.v1',ACC_PEND='acc.pendingRestore';
@@ -57,29 +57,65 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return 'skip';
   ACC.pendingCtx=null;
   const d=snap.exists?snap.data():null,cloudAt=+(d&&d.saveAt)||0;
+  if(d&&d.save){try{const parsed=JSON.parse(d.save);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('invalid')}catch(e){ACC.saveError='حفظ الحساب غير مقروء — ما استبدلناه';toast(ACC.saveError);return 'adopt-fail'}}
+  let base=null;try{base=JSON.parse(localStorage.getItem('acc.base.'+uid)||'null')}catch(e){}
+  const changed=base&&((+d?.saveRev||0)!==base.rev||(d?.saveId||null)!==base.id||cloudAt!==base.at);
+  if(changed&&d&&d.save){if(!accBackup(uid)){ACC.saveError='backup-failed';toast('ما قدرنا نحفظ النسخة الاحتياطية؛ فرّغ مساحة بالجهاز وأعد المزامنة',6000);return 'adopt-fail'}toast('تغيّر الحفظ من جهاز ثاني؛ حفظنا نسخة محلية احتياطية ونسترجع حفظ الحساب',5000)}
+  ACC.adoptKey=uid+':'+((d&&d.saveId)||'legacy')+':'+(+(d&&d.saveRev)||0)+':'+cloudAt;ACC.baseRev=+(d&&d.saveRev)||0;ACC.baseSave=(d&&d.save)||null;ACC.baseId=(d&&d.saveId)||null;ACC.saveError=null;ACC.conflict=false;
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
-  if(d&&d.save&&(restore||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  if(d&&d.save&&(restore||changed||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  try{localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
   accPendSet(null);
   if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
   /* المحلي هو الأحدث: التعديلات اللي صارت وقت عدم التزامن تنحسب الحين */
   if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now();accRaw()}
-  ACC.synced=true;accUI();accUpload(true);return 'local'}
+  ACC.synced=true;accUI();await accUpload(true);
+  if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return 'skip';
+  if(!ACC.synced){ACC.pendingCtx={uid,restore:true,retryMs:ctx.retryMs};accPendSet(uid);ACC.retryT=setTimeout(()=>accSync(ACC.pendingCtx),ctx.retryMs||30000);return 'fail'}
+  return 'local'}
 /* نعتمد حفظ السيرفر: ما نسجّل نجاح ولا نعيد التحميل إلا بعد ما تنكتب النسخة الصحيحة فعلاً */
-function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js)}catch(e){ACC.synced=false;toast('حفظك بالسيرفر فيه مشكلة — ما لمسنا شي');return false}
-  if(sessionStorage.getItem('accLoadedAt')===String(cloudAt)){ACC.synced=false;toast('ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم');return false}
+function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js);if(!sv||typeof sv!=='object'||Array.isArray(sv))throw Error('invalid')}catch(e){ACC.synced=false;toast('حفظك بالسيرفر فيه مشكلة — ما لمسنا شي');return false}
+  const marker=ACC.adoptKey||String(cloudAt);let loaded=null;try{loaded=sessionStorage.getItem('accLoadedAt')}catch(e){}if(loaded===marker){ACC.synced=false;toast('ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم');return false}
   sv.editAt=cloudAt;delete sv.unsyncedDirty;const out=JSON.stringify(sv);ACC.reloading=true;
   try{localStorage.setItem(ACC_KEY,out);if(localStorage.getItem(ACC_KEY)!==out)throw new Error('verify')}
   catch(e){ACC.reloading=false;ACC.synced=false;
     toast(e&&(e.name==='QuotaExceededError'||e.code===22)?'مساحة التخزين بالجوال ممتلئة — ما قدرنا نرجّع حفظك. تقدمك بالسيرفر سليم':'ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم',5000);return false}
-  accPendSet(null);try{sessionStorage.setItem('accLoadedAt',String(cloudAt))}catch(e){}
+  /* لا نعتمد إصدار السيرفر محلياً قبل نجاح كتابة الحفظ والتحقق منه. */
+  try{const uid=ONL.user.uid;localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
+  accPendSet(null);try{sessionStorage.setItem('accLoadedAt',marker)}catch(e){}
   if(!window.__accNoReload)location.reload();return true}
-function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
+function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S));window.DAMA_LOCAL_SAVE_FAILED=false}catch(e){window.DAMA_LOCAL_SAVE_FAILED=true;toast('ما قدرنا نحفظ بالجهاز؛ لا تسكر الصفحة قبل تأكيد الحفظ بالسيرفر',6000)}try{updateProfile()}catch(e){}}
 /* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) — بس بعد ما يتأكد التزامن ---------- */
-function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;if(window.DAMA_AUTH&&(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==window.DAMA_AUTH.uid||ONL.user.uid!==window.DAMA_AUTH.uid))return;const t=Date.now();clearTimeout(ACC.upT);
-  if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return}ACC.lastUp=t;
+function accBytes(text){let n=0;for(const c of text){const cp=c.codePointAt(0);n+=cp<128?1:cp<2048?2:cp<65536?3:4}return n}
+function accBackup(uid){try{localStorage.setItem('acc.backup.'+uid,JSON.stringify(S));return true}catch(e){return false}}
+function accSaveStatus(){if(window.DAMA_LOCAL_SAVE_FAILED&&ACC.saveError)return 'الحفظ ما اكتمل بالجهاز أو السيرفر؛ لا تسكر الصفحة';if(ACC.conflict)return 'الحفظ تغيّر من جهاز ثاني — راجع المزامنة';if(ACC.saveError)return 'تقدمك محفوظ بالجهاز؛ ننتظر اتصال السيرفر';if(ACC.uploading)return 'جارٍ حفظ التقدم…';if(ACC.synced&&ACC.ackedFp!==accFp())return 'تقدمك بالجهاز؛ بانتظار حفظ آخر التغييرات';return ACC.synced?'آخر حفظ بالسيرفر تم بنجاح ✅':'جارٍ قراءة حفظ الحساب…'}
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return Promise.resolve(false);
+  const uid=ONL.user.uid;if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid||(window.DAMA_AUTH&&uid!==window.DAMA_AUTH.uid))return Promise.resolve(false);
+  clearTimeout(ACC.upT);const t=Date.now();
+  if(ACC.uploading)return ACC.uploading.then(ok=>ok&&now?accUpload(true):ok);
+  if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return Promise.resolve(false)}
   if(!S.editAt)S.editAt=S.savedAt||t;
-  const sv=Object.assign({},S);let js=JSON.stringify(sv);if(js.length>700000){delete sv.replays;js=JSON.stringify(sv)}
-  ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name,nameKey:ACC.key||null,photo:S.avatarImg||null,lvl:(typeof level==='function'?level():1),rating:S.rating||1000,wins:S.wins||0,save:js,saveAt:S.editAt,seen:t},{merge:true}).catch(()=>{})}
+  const sv=Object.assign({},S);delete sv.savedAt;let js=JSON.stringify(sv);if(accBytes(js)+accBytes(S.avatarImg||'')>850000){delete sv.replays;js=JSON.stringify(sv)}
+  if(accBytes(js)+accBytes(S.avatarImg||'')>900000){ACC.saveError='save-too-large';accBackup(uid);toast('الحفظ كبير؛ قلّل حجم صورة حسابك وأعد المحاولة. تقدمك باقي بالجهاز',6000);return Promise.resolve(false)}
+  if(js===ACC.ackedSave&&!ACC.saveError)return Promise.resolve(true);
+  const token=uid+'-'+t+'-'+Math.random().toString(36).slice(2),expectedRev=ACC.baseRev,expectedSave=ACC.baseSave,fp=accFp(),prior=ACC.lastAttempt;ACC.lastAttempt={id:token,js,at:sv.editAt,fp};
+  ACC.uploading=(async()=>{try{
+    const ref=ONL.db.collection('users').doc(uid);
+    const saved=await ONL.db.runTransaction(async tx=>{
+      const snap=await tx.get(ref),d=snap.exists?snap.data():{};
+      if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)throw {code:'session'};
+      if(prior&&d.saveId===prior.id&&d.save===prior.js)return {rev:+d.saveRev||0,...prior};
+      if((+d.saveRev||0)!==expectedRev||(d.save||null)!==expectedSave)throw {code:'save-conflict'};
+      const next=expectedRev+1;
+      tx.set(ref,{photo:sv.avatarImg||null,lvl:1+Math.floor((sv.xp||0)/100),rating:sv.rating||1000,wins:sv.wins||0,save:js,saveAt:sv.editAt,saveRev:next,saveId:token,seen:t,...(!snap.exists?{created:t,name:ACC.name||S.name}:{})},{merge:true});return {rev:next,id:token,js,at:sv.editAt,fp};
+    });
+    ACC.baseRev=saved.rev;ACC.baseSave=saved.js;ACC.baseId=saved.id;ACC.ackedSave=saved.js;ACC.ackedFp=saved.fp;ACC.lastUp=t;ACC.saveError=null;ACC.lastAttempt=null;
+    try{localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:saved.rev,id:saved.id,at:saved.at}))}catch(e){}
+    return true;
+  }catch(e){ACC.saveError=e.code||e.message||'save';accBackup(uid);
+    if(e.code==='save-conflict'){ACC.conflict=true;ACC.synced=false;toast(window.DAMA_LOCAL_SAVE_FAILED?'تغيّر حفظك من جهاز ثاني والتخزين بالجهاز متعطّل؛ لا تسكر الصفحة':'تغيّر حفظك من جهاز ثاني. نسختك بالجهاز محفوظة؛ افتح حسابي للمزامنة',6000)}
+    else{toast(window.DAMA_LOCAL_SAVE_FAILED?'الحفظ بالجهاز والسيرفر ما اكتمل؛ لا تسكر الصفحة وبنعيد المحاولة':'ما اكتمل الحفظ بالسيرفر؛ تقدمك باقي بالجهاز وبنعيد المحاولة',5000);ACC.upT=setTimeout(()=>accUpload(true),30000)}return false;
+  }finally{ACC.uploading=null}})();return ACC.uploading.then(ok=>ok&&now?accUpload(true):ok)}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)accUpload(true)});
 /* تعديل حقيقي؟ نحرّك editAt بس لو المحتوى تغيّر والحساب متزامن (أو ضيف). غير كذا نعلّم إن فيه تعديل معلّق */
 function accMark(){const fp=accFp();if(fp===ACC.lastFp)return;ACC.lastFp=fp;
@@ -123,32 +159,36 @@ function accNameDlg(first,pref){accDlg('<span class="tag">'+(first?'خطوة أ�
   '<div class="row"><button class="pbtn" data-a="ok" id="aOk" disabled>اعتمد الاسم</button>'+(first?'':'<button class="gbtn" data-a="x">إلغاء</button>')+'</div>',
   {ok:()=>accClaim(($('#aN').value||'').trim()),x:()=>closeLayer()},first?()=>{if(!ACC.key)setTimeout(()=>accNameDlg(true),200)}:null);
   const i=$('#aN');i.addEventListener('input',()=>{clearTimeout(accCk);accCk=setTimeout(accCheck,380)});document.getElementById('aG').onclick=e=>{const b=e.target.closest('button[data-n]');if(b){i.value=b.dataset.n;accCheck()}};if(i.value)accCheck();setTimeout(()=>i.focus(),60)}
-async function accFree(n){const k=accKey(n);if(!k)return false;try{const d=await ONL.db.collection('names').doc(k).get();return !d.exists||d.data().uid===ONL.user.uid}catch(e){return false}}
+async function accFree(n){const k=accKey(n);if(!k)return false;const d=await ONL.db.collection('names').doc(k).get({source:'server'});return !d.exists||d.data().uid===ONL.user.uid}
 function accSugs(n){const b=n.trim().slice(0,10),r=()=>Math.floor(Math.random()*90+10);const ar=/[؀-ۿ]/.test(b);
   const f=(x,suf)=>x.slice(0,14-suf.length)+suf;return[f(b,' '+r()),f(b,ar?' الكويتي':'_kw'),f(b,'_965'),(ar?'ال':'the_')+b,f(b,ar?' الذهبي':'_gold'),f(b,''+r()+r())].map(x=>x.slice(0,14)).filter((x,i,a)=>!accValid(x)&&a.indexOf(x)===i)}
-async function accCheck(){const i=$('#aN'),ok=$('#aOk'),G=$('#aG');if(!i)return;const n=i.value.trim();G.innerHTML='';ok.disabled=true;
-  const v=accValid(n);if(v){accSay(n?v:'');return}accSay('نشيك…',true);const mine=n;
-  const free=await accFree(n);if(($('#aN')||{}).value!==undefined&&$('#aN').value.trim()!==mine)return;
-  if(free){accSay('✅ الاسم متاح',true);ok.disabled=false;return}
-  accSay('❌ هذا الاسم مستخدم — اختر اسم ثاني');const c=accSugs(n),av=[];for(const x of c){if(av.length>=3)break;if(await accFree(x))av.push(x)}
-  G.innerHTML=av.map(x=>'<button data-n="'+esc(x)+'">'+esc(x)+'</button>').join('')}
-async function accClaim(n){const v=accValid(n);if(v){accSay(v);return}const k=accKey(n),uid=ONL.user.uid,db=ONL.db,old=ACC.key;$('#aOk').disabled=true;accSay('نحجز الاسم…',true);
-  try{await db.runTransaction(async tx=>{const ref=db.collection('names').doc(k),d=await tx.get(ref);if(d.exists&&d.data().uid!==uid)throw{code:'taken'};
-      tx.set(ref,{uid,name:n,at:Date.now()});if(old&&old!==k)tx.delete(db.collection('names').doc(old));
+async function accCheck(){const i=$('#aN'),ok=$('#aOk'),G=$('#aG');if(!i||!ok||!G)return;const n=i.value.trim(),epoch=ACC.nameCheck=(ACC.nameCheck||0)+1;
+  const current=()=>$('#aN')===i&&i.value.trim()===n&&epoch===ACC.nameCheck;
+  G.innerHTML='';ok.disabled=true;const v=accValid(n);if(v){accSay(n?v:'');return}accSay('نشيك…',true);
+  try{const free=await accFree(n);if(!current())return;if(free){accSay('✅ الاسم متاح',true);ok.disabled=!!ACC.claiming;return}
+    accSay('هذا الاسم مستخدم — اختر اسم ثاني');const av=[];for(const x of accSugs(n)){if(!current())return;if(av.length>=3)break;if(await accFree(x))av.push(x)}
+    if(current())G.innerHTML=av.map(x=>'<button data-n="'+esc(x)+'">'+esc(x)+'</button>').join('');
+  }catch(e){if(current()){accSay('تعذّر فحص الاسم؛ تقدر تعيد المحاولة');ok.disabled=false}}}
+async function accClaim(n){const v=accValid(n);if(v){accSay(v);return}if(ACC.claiming)return;ACC.claiming=true;const button=$('#aOk'),input=$('#aN');const k=accKey(n),uid=ONL.user.uid,db=ONL.db,old=ACC.key;if(button)button.disabled=true;accSay('نحجز الاسم…',true);
+  try{await db.runTransaction(async tx=>{const ref=db.collection('names').doc(k),d=await tx.get(ref);if(d.exists&&d.data().uid!==uid)throw{code:'taken'};if(ONL.auth.currentUser.uid!==uid)throw{code:'session'};const oldRef=old&&old!==k?db.collection('names').doc(old):null,oldDoc=oldRef?await tx.get(oldRef):null;
+      tx.set(ref,{uid,name:n,at:Date.now()});if(oldDoc&&oldDoc.exists&&oldDoc.data().uid===uid)tx.delete(oldRef);
       tx.set(db.collection('users').doc(uid),{name:n,nameKey:k},{merge:true})});
-    ACC.key=k;ACC.name=n;S.name=n;delete S.wantName;accRaw();accUpload(true);closeLayer();toast('أهلاً '+n+' 🎉 الاسم صار لك');accUI()}
-  catch(e){if(e&&e.code==='taken'){accSay('❌ أحد سبقك عليه — اختر اسم ثاني');accCheck()}else accSay(accErr(e))}}
+    if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return;ACC.key=k;ACC.name=n;S.name=n;delete S.wantName;accRaw();accUpload(true);if($('#aN')===input)closeLayer();toast('أهلاً '+n+' 🎉 الاسم صار لك');accUI()}
+  catch(e){if($('#aN')!==input)return;if(e&&e.code==='taken'){accSay('❌ أحد سبقك عليه — اختر اسم ثاني');accCheck()}else if($('#aN')===input)accSay(accErr(e))}finally{ACC.claiming=false;if($('#aN')===input&&$('#aOk')===button&&button)button.disabled=!!accValid(input.value.trim())}}
 /* ---------- حسابي: الحالة، تغيير الاسم، خروج، حذف ---------- */
 function accMenu(){if(!ACC.ready){toast('الحسابات تشتغل من رابط اللعبة الخاص');return}if(ACC.anon)return accLoginDlg();
   const u=ONL.auth.currentUser,how=(u.providerData&&u.providerData[0]&&u.providerData[0].providerId)==='google.com'?'Google':'الإيميل';
-  accDlg('<span class="tag">حسابي</span><h3>'+esc(S.name)+'</h3><p class="muted">مسجّل بـ '+how+(u.email?' · <span dir="ltr">'+esc(u.email)+'</span>':'')+'<br>تقدمك محفوظ بالسيرفر ✅</p>'+
-    '<div class="row"><button class="pbtn" data-a="nm">✏️ تغيير الاسم</button><button class="gbtn" data-a="out">تسجيل خروج</button></div><button class="lnk" data-a="del" style="color:#ff9a8a">حذف الحساب نهائياً</button>',
-    {nm:()=>accNameDlg(false,S.name),out:()=>accSignOut(),del:()=>accDelDlg()})}
-async function accSignOut(){accUpload(true);try{await ONL.auth.signOut()}catch(e){}try{localStorage.removeItem('damaworld.v1');sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND)}catch(e){}toast('سجّلت خروج');setTimeout(()=>location.reload(),600)}
-function accDelDlg(){accDlg('<span class="tag" style="color:#ff9a8a">تحذير</span><h3>حذف الحساب؟</h3><p class="muted">بينحذف حسابك واسمك وكل تقدمك نهائياً، وما نقدر نرجّعه.</p><div class="row"><button class="gbtn danger" data-a="y">احذف نهائياً</button><button class="pbtn" data-a="n">لا، رجوع</button></div>',{y:()=>accDelete(),n:()=>accMenu()})}
-async function accDelete(){const u=ONL.auth.currentUser,db=ONL.db;try{if(ACC.key)await db.collection('names').doc(ACC.key).delete();await db.collection('users').doc(u.uid).delete();await u.delete();
-    localStorage.removeItem('damaworld.v1');toast('انحذف حسابك');setTimeout(()=>location.reload(),800)}
-  catch(e){if(e.code==='auth/requires-recent-login')toast('لأمانك: سجّل خروج وادخل من جديد، وبعدها احذف');else toast(accErr(e))}}
+  accDlg('<span class="tag">حسابي</span><h3>'+esc(S.name)+'</h3><p class="muted">مسجّل بـ '+how+(u.email?' · <span dir="ltr">'+esc(u.email)+'</span>':'')+'<br>'+esc(accSaveStatus())+'</p>'+
+    (ACC.conflict?'<button class="pbtn" data-a="sync">استرجاع حفظ الحساب (النسخة المحلية احتياطية)</button>':'')+'<div class="row"><button class="pbtn" data-a="nm">✏️ تغيير الاسم</button><button class="gbtn" data-a="out">تسجيل خروج</button></div><button class="lnk" data-a="del" style="color:#ff9a8a">حذف الحساب نهائياً</button>',
+    {nm:()=>accNameDlg(false,S.name),out:()=>accSignOut(),del:()=>accDelDlg(),sync:()=>accSync({uid:u.uid,restore:true})})}
+async function accSignOut(){if(ACC.signingOut)return;ACC.signingOut=true;
+  try{if(!await accUpload(true)){toast('ما سجلنا خروج لأن آخر حفظ ما اكتمل. جرّب بعد رجوع الاتصال',5000);return}
+    const uid=ONL.user.uid;accBackup(uid);await ONL.auth.signOut();
+    try{localStorage.removeItem(ACC_KEY);sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND);localStorage.removeItem('acc.owner')}catch(e){}
+    toast('سجّلت خروج');location.reload();
+  }catch(e){toast(accErr(e))}finally{ACC.signingOut=false}}
+function accDelDlg(){accDlg('<span class="tag">حذف الحساب</span><h3>تواصل مع الإدارة</h3><p class="muted">الحذف من داخل اللعبة موقوف مؤقتاً لحماية بياناتك أثناء تجهيز الحذف الآمن.</p><button class="pbtn" data-a="n">رجوع</button>',{n:()=>accMenu()})}
+async function accDelete(){toast('الحذف من داخل اللعبة موقوف مؤقتاً لحماية تقدمك. تواصل مع إدارة اللعبة لحذف الحساب.',6000);return false}
 /* ---------- مداخل الواجهة ---------- */
 function accUI(){let b=$('#accBan');const lb=$('#lbProf');if(!ACC.ready||!ACC.anon||!lb||mode!=='lobby'||document.querySelector('.scrim')){if(b)b.remove();return}
   if(!b){b=document.createElement('button');b.id='accBan';b.textContent='💾 سجّل واحفظ تقدمك';b.onclick=e=>{e.stopPropagation();accLoginDlg()};document.body.appendChild(b)}

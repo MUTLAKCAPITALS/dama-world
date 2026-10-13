@@ -10,7 +10,7 @@
   const $ = id => document.getElementById(id);
   const real = user => !!user && !user.isAnonymous;
   const gate = window.DAMA_AUTH = {config:CONFIG, entered:false, guest:false, promptOpen:false,
-    saveKey:'damaworld.v1', uid:null, attach, syncResult, requireAccount, openAccount};
+    saveKey:'damaworld.v1', uid:null, attach, syncResult, requireAccount, openAccount, graphicsLost};
   const sessionValid = () => gate.guest ? !real(auth && auth.currentUser) :
     real(auth && auth.currentUser) && auth.currentUser.uid === userId;
 
@@ -38,6 +38,7 @@
       'game':'تعذّر تشغيل رسومات اللعبة في هذا المتصفح. حدّث الصفحة أو جرّب متصفحًا يدعم WebGL.'
     })[code] || 'ما قدرنا نكمل الاتصال. تأكد من الإنترنت وحاول مرة ثانية.';
   }
+  function graphicsLost() { fatal=true; gate.promptOpen=true; state('error','توقف عرض اللعبة. تقدمك محفوظ بالجهاز؛ اضغط إعادة المحاولة لتجهيز الرسوم من جديد.'); }
   function state(kind, text) {
     const shell = $('authGate');
     shell.hidden = false;
@@ -165,7 +166,13 @@
       if (!gate.guest) {
         const intent = storage('getItem', INTENT);
         if (intent) { try { sessionStorage.removeItem('accLoadedAt'); } catch (_) {} }
-        if (intent === 'restore') storage('setItem', PENDING, user.uid);
+        const previousOwner = storage('getItem', 'acc.owner');
+        if (previousOwner && previousOwner !== user.uid) {
+          const previousSave = storage('getItem', 'damaworld.v1');
+          if (previousSave) storage('setItem', 'acc.backup.' + previousOwner, previousSave);
+          storage('removeItem', 'damaworld.v1');
+        }
+        if (intent === 'restore' || (previousOwner && previousOwner !== user.uid && intent !== 'new' && intent !== 'new-guest')) storage('setItem', PENDING, user.uid);
         if (intent === 'new-guest') {
           const save = storage('getItem', 'damaworld.guest.v1') || '{}';
           storage('setItem', 'damaworld.v1', save);

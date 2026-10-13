@@ -256,7 +256,7 @@ input[type=range]{accent-color:var(--brass);width:160px}
 @media (max-width:760px){#topR .ibtn small{display:none}#topR{gap:6px}}
 </style>
 
-<link rel="stylesheet" href="auth_start.css?v=guest-browse-1">
+<link rel="stylesheet" href="auth_start.css?v=reliability-1">
 </head>
 <body class="auth-pending">
 <section id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="authBrand" data-state="loading">
@@ -431,7 +431,7 @@ let S;
 try{S=Object.assign(structuredClone(DEF),JSON.parse(localStorage.getItem(SAVE_KEY)||'{}'));
   S.quests=Object.assign({},DEF.quests,S.quests);S.settings=Object.assign({},DEF.settings,S.settings);S.look=Object.assign({},DEF.look,S.look);S.piece=Object.assign({},DEF.piece,S.piece);}
 catch(e){S=structuredClone(DEF)}
-function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S))}catch(e){}}
+function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));window.DAMA_LOCAL_SAVE_FAILED=false;return true}catch(e){const first=!window.DAMA_LOCAL_SAVE_FAILED;window.DAMA_LOCAL_SAVE_FAILED=true;if(first)setTimeout(()=>toast('التخزين بالجهاز متعطّل أو ممتلئ؛ لا تسكر الصفحة قبل تأكيد حفظ السيرفر',6000),0);return false}}
 function requirePlayAccount(){return !window.DAMA_AUTH||window.DAMA_AUTH.requireAccount()}
 
 /* ---------------- palettes & content ---------------- */
@@ -499,6 +499,8 @@ const SFX={tap:()=>tone(660,.07,'triangle',.06),move:()=>knock(.3),cap:()=>{knoc
 /* ---------------- renderer & scene ---------------- */
 const canvas=$('#c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();window.DAMA_CONTEXT_LOST=true;try{vcStop();persist()}catch(e){}if(window.DAMA_AUTH)window.DAMA_AUTH.graphicsLost()});
+canvas.addEventListener('webglcontextrestored',()=>{if(window.DAMA_AUTH)window.DAMA_AUTH.graphicsLost()});
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.info.autoReset=false;
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(55,1,.08,420);
@@ -574,17 +576,22 @@ const GradeShader={uniforms:{tDiffuse:{value:null},exposure:{value:.97},sat:{val
  'vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}',
  'void main(){vec3 c=texture2D(tDiffuse,vUv).rgb*exposure*warm;c=aces(c);float l=dot(c,vec3(0.299,0.587,0.114));c=mix(vec3(l),c,sat);',
  'vec2 q=vUv-0.5;c*=1.0-vig*dot(q,q)*1.5;float g=fract(sin(dot(vUv+fract(time),vec2(12.9898,78.233)))*43758.5453);c+=(g-0.5)/180.0;gl_FragColor=vec4(c,1.0);}'].join('\n')};
-function setupFX(){if(FX.composer){try{FX.composer.renderTarget1.dispose();FX.composer.renderTarget2.dispose()}catch(e){}FX.composer=null}
+function disposeFX(){const c=FX.composer,seen=new Set();const dispose=o=>{if(o&&typeof o.dispose==='function'&&!seen.has(o)){seen.add(o);try{o.dispose()}catch(e){}}};
+  if(c){dispose(c.renderTarget1);dispose(c.renderTarget2);for(const pass of [...(c.passes||[]),c.copyPass]){if(!pass)continue;
+    for(const key of ['renderTargetBright','renderTargetDepth','renderTargetColor','material','materialDepth','materialBokeh','materialHighPassFilter','compositeMaterial','materialCopy','basic'])dispose(pass[key]);
+    for(const key of ['renderTargetsHorizontal','renderTargetsVertical','separableBlurMaterials'])for(const value of pass[key]||[])dispose(value);
+  }}FX.composer=FX.bloom=FX.bokeh=FX.grade=null}
+function setupFX(){disposeFX();
   const q=S.settings.quality;if(q==='low'||!FX.ok){GLOW.forEach(applyGlow);return}
-  try{const pr=renderer.getPixelRatio(),w=Math.max(1,Math.floor(innerWidth*pr)),h=Math.max(1,Math.floor(innerHeight*pr));
+  let pendingTarget=null;try{const pr=renderer.getPixelRatio(),w=Math.max(1,Math.floor(innerWidth*pr)),h=Math.max(1,Math.floor(innerHeight*pr));
   const gl2=renderer.capabilities.isWebGL2;const hf=gl2||renderer.extensions.has('OES_texture_half_float');
   const opts={type:hf?THREE.HalfFloatType:THREE.UnsignedByteType,format:THREE.RGBAFormat,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter};
   let rt;if(gl2&&THREE.WebGLMultisampleRenderTarget){rt=new THREE.WebGLMultisampleRenderTarget(w,h,opts);rt.samples=q==='high'?4:2}else rt=new THREE.WebGLRenderTarget(w,h,opts);
-  FX.hdr=hf;const c=new THREE.EffectComposer(renderer,rt);c.setPixelRatio(pr);c.setSize(innerWidth,innerHeight);
+  pendingTarget=rt;FX.hdr=hf;const c=FX.composer=new THREE.EffectComposer(renderer,rt);pendingTarget=null;c.setPixelRatio(pr);c.setSize(innerWidth,innerHeight);
   c.addPass(new THREE.RenderPass(scene,camera));
   FX.bloom=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),hf?.6:.35,.5,hf?1.3:.94);c.addPass(FX.bloom);
   FX.bokeh=null;if(THREE.BokehPass&&THREE.BokehShader){FX.bokeh=new THREE.BokehPass(scene,camera,{focus:1.3,aperture:.006,maxblur:.008,width:w,height:h});FX.bokeh.enabled=false;c.addPass(FX.bokeh)}
-  FX.grade=new THREE.ShaderPass(GradeShader);c.addPass(FX.grade);FX.composer=c}catch(e){console.warn('fx',e);FX.composer=null}
+  FX.grade=new THREE.ShaderPass(GradeShader);c.addPass(FX.grade);FX.composer=c}catch(e){console.warn('fx',e);if(pendingTarget)pendingTarget.dispose();disposeFX()}
   GLOW.forEach(applyGlow)}
 let envRT=null;
 function buildEnv(){try{const pm=new THREE.PMREMGenerator(renderer);const sc=new THREE.Scene();const sm=skyMat.clone();const s=new THREE.Mesh(new THREE.SphereGeometry(50,32,16),sm);sc.add(s);const rt=pm.fromScene(sc,.035);if(envRT)envRT.dispose();envRT=rt;scene.environment=rt.texture;pm.dispose();s.geometry.dispose();sm.dispose()}catch(e){console.warn('env',e)}}
@@ -1325,20 +1332,20 @@ function boardPose(){const t=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));co
   const pos=game.c.clone().addScaledVector(game.d,-h*.1);pos.y=BOARDY+h;tmpCam.position.copy(pos);tmpCam.up.copy(game.d);tmpCam.lookAt(game.c.x,BOARDY,game.c.z);return{pos,quat:tmpCam.quaternion.clone()}}
 function showMatchHud(){const n=game.npc;$('#mh').hidden=false;$('#oppN').textContent=n.name;$('#oppS').textContent='من '+n.from+' · المستوى '+n.lvl;$('#oppAv').textContent=n.name[0];$('#oppAv').style.background=oppColor();$('#oppAv').style.color=oppColor()==='#2a2320'?'#fff':'#2a1606';
   const pc=SHOP.color.find(c=>c.id===S.piece.color).hex;$('#meN').textContent=S.name;$('#meAv').textContent=S.name[0];$('#meAv').style.background=pc;$('#meAv').style.color=new THREE.Color(pc).getHSL({}).l>.5?'#2a1606':'#fff';
-  updMatchBtns();updCounts();setupClocks();$('#oppS').textContent='من '+n.from+' · '+DIFFN[game.diff]+' · '+npcRating(n);oppSay(game.quick?'مباراة سريعة! لا تتأخر':'بالتوفيق! لا تزعل إذا خسرت',2600)}
+  updMatchBtns();updCounts();setupClocks();$('#oppS').textContent='من '+n.from+' · '+DIFFN[game.diff]+' · '+npcRating(n);!game.online&&oppSay(game.quick?'مباراة سريعة! لا تتأخر':'بالتوفيق! لا تزعل إذا خسرت',2600)}
 function updMatchBtns(){$('#mMic').classList.toggle('on',S.settings.matchVoice);$('#mMic').innerHTML=ic(S.settings.matchVoice?'mic':'micoff')+'<span>'+(S.settings.matchVoice?'مايكك مفتوح':'مايكك مغلق')+'</span>';$('#mMute').classList.toggle('on',S.settings.oppVoice);$('#mMute').innerHTML=ic(S.settings.oppVoice?'speaker':'speakeroff')+'<span>'+(S.settings.oppVoice?'صوت الخصم مسموع':'الخصم مكتوم')+'</span>'}
 $('#mMic').onclick=()=>{S.settings.matchVoice=!S.settings.matchVoice;persist();updMatchBtns();toast(S.settings.matchVoice?'مايك المباراة مفتوح (محاكاة): يسمعك الخصم فقط':'أغلقت مايك المباراة')};
 $('#mMute').onclick=()=>{S.settings.oppVoice=!S.settings.oppVoice;persist();updMatchBtns();if(!S.settings.oppVoice)$('#oppP').classList.remove('talking','say')};
 const QUICK=['بالتوفيق','حركة حلوة!','خلّني أفكّر','يا سلام'];
-$('#mChat').onclick=()=>{const q=$('#quick');q.classList.toggle('show');q.innerHTML=QUICK.map((t,i)=>'<button class="glass" data-q="'+i+'">'+t+'</button>').join('');q.querySelectorAll('button').forEach(b=>b.onclick=()=>{q.classList.remove('show');meSay(QUICK[+b.dataset.q]);SFX.pop();setTimeout(()=>oppSay(pick(['تسلم','هههه','شوف وش بسوي','ركّز زين']),2200),1200)})};
-$('#mResign').onclick=()=>{if(mode!=='match'||game.over)return;showLayer('<div class="scrim" data-x="1"><div class="card dlg"><h3>تستسلم؟</h3><p>ستُحتسب المباراة خسارة، وتعود للتجوّل.</p><div class="row"><button class="gbtn danger" data-a="y">استسلام</button><button class="pbtn" data-a="x">أكمل اللعب</button></div></div></div>',{y:()=>{closeLayer();endGame(-1,'استسلمت')},x:()=>closeLayer()})};
+$('#mChat').onclick=()=>{const q=$('#quick');q.classList.toggle('show');q.innerHTML=QUICK.map((t,i)=>'<button class="glass" data-q="'+i+'">'+t+'</button>').join('');q.querySelectorAll('button').forEach(b=>b.onclick=()=>{q.classList.remove('show');if(game&&game.online){onlChat(+b.dataset.q);return}meSay(QUICK[+b.dataset.q]);SFX.pop();setTimeout(()=>oppSay(pick(['تسلم','هههه','شوف وش بسوي','ركّز زين']),2200),1200)})};
+$('#mResign').onclick=()=>{if(mode!=='match'||game.over||ONL.finishing)return;showLayer('<div class="scrim" data-x="1"><div class="card dlg"><h3>تستسلم؟</h3><p>ستُحتسب المباراة خسارة، وتعود للتجوّل.</p><div class="row"><button class="gbtn danger" data-a="y">استسلام</button><button class="pbtn" data-a="x">أكمل اللعب</button></div></div></div>',{y:()=>{closeLayer();endGame(-1,'استسلمت')},x:()=>closeLayer()})};
 let meSayT=0,oppSayT=0;
 function meSay(t){if(player.ch){const u=player.ch.userData;u.talking=true;setTimeout(()=>u.talking=false,1500)}const p=$('#meP');$('#meB').textContent=t;p.classList.add('say');clearTimeout(meSayT);meSayT=setTimeout(()=>p.classList.remove('say'),2400)}
 function oppSay(t,ms){if(!S.settings.oppVoice)return;const p=$('#oppP');$('#oppB').textContent=t;p.classList.add('say','talking');clearTimeout(oppSayT);oppSayT=setTimeout(()=>p.classList.remove('say','talking'),ms||2200)}
 function updCounts(){let a=0,b=0;for(const p of game.board){if(p>0)a++;else if(p<0)b++}$('#meC').textContent=a;$('#oppC').textContent=b;$('#crowdN').textContent=specs.filter(s=>s.state==='watch').length;
   $('#meP').classList.toggle('turn',game.turn===1&&!game.over);$('#oppP').classList.toggle('turn',game.turn===-1&&!game.over)}
 function setStatus(t,must){const s=$('#status');s.textContent=t;s.classList.toggle('must',!!must)}
-function startTurn(){if(game.over)return;game.legal=genMoves(game.board,game.turn);updCounts();
+function startTurn(){if(game.over)return;if(game.clockAt==null)game.clockAt=performance.now();tickClock();if(game.over)return;game.legal=genMoves(game.board,game.turn);updCounts();
   if(!game.legal.length){endGame(game.turn===1?-1:1,game.turn===1?'لا توجد لديك حركة متاحة':'لم يبقَ للخصم حركة');return}
   if(game.noCap>=60){endGame(0,'60 نقلة بلا أكل');return}
   if(game.turn===1){game.sel=null;game.prefix=[];clearMarks();const must=game.legal[0].caps.length>0;
@@ -1360,21 +1367,21 @@ function onCell(r,c){const i=r*8+c;
   stepPlayer(r,c,next)}
 function showTargets(){clearMarks();const k=game.prefix.length;const cur=k?game.prefix[k-1]:game.sel;mark(cur[0],cur[1],selMat);const seen=new Set();for(const m of game.cand){const s=m.steps[k];const key=s.join();if(seen.has(key))continue;seen.add(key);mark(s[0],s[1],markMat);if(m.caps.length)mark(s[0],s[1],markMat,dotGeo)}
   if(k>0)setStatus('أكمل الأكل — '+(game.cand[0].caps.length-k)+' متبقٍ',true)}
-async function stepPlayer(r,c,next){game.busy=true;clearMarks();const k=game.prefix.length;const from=k?game.prefix[k-1]:game.sel;const mesh=game.meshes[from[0]*8+from[1]];
+async function stepPlayer(r,c,next){const id=game.id,epoch=game.boardEpoch||0;game.busy=true;clearMarks();const k=game.prefix.length;const from=k?game.prefix[k-1]:game.sel;const mesh=game.meshes[from[0]*8+from[1]];
   game.meshes[from[0]*8+from[1]]=null;game.meshes[r*8+c]=mesh;
-  await animPiece(mesh,cellPos(r,c),next[0].caps.length?.07:.035);SFX.move();
+  await animPiece(mesh,cellPos(r,c),next[0].caps.length?.07:.035);if(!game||game.id!==id||game.over||(game.boardEpoch||0)!==epoch)return;SFX.move();
   if(next[0].caps.length){const[cr,cc]=next[0].caps[k];capturePiece(cr,cc,1)}
   game.prefix.push([r,c]);game.cand=next;
   if(next[0].steps.length===game.prefix.length){finishMove(next[0],1)}else{game.busy=false;showTargets()}}
 function capturePiece(r,c,by){const m=game.meshes[r*8+c];game.meshes[r*8+c]=null;if(!m)return;SFX.cap();
   const n=by===1?game.trayMe++:game.trayOpp++;const side=by===1?1:-1;const tp=game.c.clone().addScaledVector(game.right,side*.62+(n%2)*side*.08).addScaledVector(game.d,(by===1?-.42:.42)+(by===1?1:-1)*Math.floor(n/2)*.1);tp.y=TOPY+.04;
   animPiece(m,tp,.12,.4);spectatorsReact(by)}
-function finishMove(m,side){const was=game.board[m.from[0]*8+m.from[1]];game.board=applyMove(game.board,m,side);const[tr,tc]=m.steps[m.steps.length-1];onMoveStats(m,side,was,game.board[tr*8+tc]);
-  const mesh=game.meshes[tr*8+tc];if(mesh){mesh.position.y=BOARDY;if(Math.abs(was)===1&&Math.abs(game.board[tr*8+tc])===2){mesh.userData.crown.visible=true;SFX.king();toast(side===1?'حجرك صار «كش» ويتحرك عدة خانات':game.npc.name+' حصل على كش');if(side===1)oppSay(pick(['أوه، كش!','لا لا لا']));else meSay('…')}}
-  if(m.caps.length){game.noCap=0;if(side===1){game.capMe+=m.caps.length;oppSay(pick(['آه! ما انتبهت','حلوة منك','ركزت علي اليوم']))}else{game.capOpp+=m.caps.length;oppSay(pick(['خذ هذي!','ركّز زين','هههه']))}}else game.noCap++;
+function finishMove(m,side){tickClock();if(!game||game.over)return;const id=game.id,was=game.board[m.from[0]*8+m.from[1]];game.board=applyMove(game.board,m,side);const[tr,tc]=m.steps[m.steps.length-1];onMoveStats(m,side,was,game.board[tr*8+tc]);
+  const mesh=game.meshes[tr*8+tc];if(mesh){mesh.position.y=BOARDY;if(Math.abs(was)===1&&Math.abs(game.board[tr*8+tc])===2){mesh.userData.crown.visible=true;SFX.king();toast(side===1?'حجرك صار «كش» ويتحرك عدة خانات':game.npc.name+' حصل على كش');if(side===1)!game.online&&oppSay(pick(['أوه، كش!','لا لا لا']));else meSay('…')}}
+  if(m.caps.length){game.noCap=0;if(side===1){game.capMe+=m.caps.length;!game.online&&oppSay(pick(['آه! ما انتبهت','حلوة منك','ركزت علي اليوم']))}else{game.capOpp+=m.caps.length;!game.online&&oppSay(pick(['خذ هذي!','ركّز زين','هههه']))}}else game.noCap++;
   game.plies++;game.sel=null;game.prefix=[];game.cand=[];game.busy=false;game.turn=-side;updCounts();
   const oppAlive=game.board.some(p=>p*-side>0);if(!oppAlive){endGame(side,side===1?'أكلت كل أحجار الخصم':'أكل الخصم كل أحجارك');return}
-  setTimeout(()=>{if(game&&!game.over)startTurn()},side===1?250:120)}
+  setTimeout(()=>{if(game&&game.id===id&&!game.over)startTurn()},side===1?250:120)}
 async function aiTurn(){const id=game.id;game.busy=true;const npc=game.npc;npc.ch.userData.action='think';await sleep(game.quick?rnd(300,800):rnd(600,1200));if(!game||game.id!==id||game.over)return;
   const m=aiMoveDiff(game.board,game.diff==null?1:game.diff);npc.ch.userData.action='point';npc.ch.userData.actT=.8;npc.ch.userData.sitBack=true;if(!m){endGame(1,'لم يبقَ للخصم حركة');return}
   let cur=m.from;for(let k=0;k<m.steps.length;k++){const[r,c]=m.steps[k];const mesh=game.meshes[cur[0]*8+cur[1]];game.meshes[cur[0]*8+cur[1]]=null;game.meshes[r*8+c]=mesh;
@@ -1384,11 +1391,11 @@ async function aiTurn(){const id=game.id;game.busy=true;const npc=game.npc;npc.c
 const anims=[];
 function animPiece(mesh,to,hop,dur){return new Promise(res=>anims.push({mesh,from:mesh.position.clone(),to:to.clone(),t:0,dur:dur||(.26+mesh.position.distanceTo(to)*.6),hop:hop||.03,res}))}
 function updateAnims(dt){for(let i=anims.length-1;i>=0;i--){const a=anims[i];a.t+=dt;const k=Math.min(1,a.t/a.dur),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;a.mesh.position.lerpVectors(a.from,a.to,e);a.mesh.position.y+=Math.sin(k*Math.PI)*a.hop;if(k>=1){anims.splice(i,1);a.res()}}}
-function endGame(res,why){if(game.over)return;game.over=true;clearMarks();updCounts();const n=game.npc;const mins=Math.max(1,Math.round((performance.now()-game.started)/60000));
-  let title,coins=0;if(res>0){title='فزت!';coins=50+game.capMe*2;S.wins++;addXP(60);SFX.win();completeQuest('win');oppSay('مبروك، تستاهل',3000)}else if(res<0){title='خسرت هذه المرة';coins=10;S.losses++;addXP(15);SFX.lose();oppSay('لعبة حلوة، مرة ثانية؟',3000)}else{title='تعادل';coins=25;S.draws++;addXP(25)}
+function endGame(res,why){if(game.over)return;const endedId=game.id;game.over=true;clearMarks();updCounts();const n=game.npc;const mins=Math.max(1,Math.round((performance.now()-game.started)/60000));
+  let title,coins=0;if(res>0){title='فزت!';coins=50+game.capMe*2;S.wins++;addXP(60);SFX.win();completeQuest('win');!game.online&&oppSay('مبروك، تستاهل',3000)}else if(res<0){title='خسرت هذه المرة';coins=10;S.losses++;addXP(15);SFX.lose();!game.online&&oppSay('لعبة حلوة، مرة ثانية؟',3000)}else{title='تعادل';coins=25;S.draws++;addXP(25)}
   addCoins(coins);const rkH=onMatchEnd(res);persist();for(const s of specs){s.ch.userData.action=Math.random()<.5?'cheer':'clap';s.ch.userData.actT=2.2;s.line=res>0?pick(['مبروك!','تستاهل','فوز مستحق']):pick(['حظ أوفر','قريبة!','المرة الجاية']);s.sayT=2.5}
   setStatus(why);
-  setTimeout(()=>{showLayer('<div class="scrim"><div class="card dlg"><span class="tag">'+why+'</span><h3>'+title+'</h3><p>أكلت '+game.capMe+' · أكل الخصم '+game.capOpp+' · '+game.plies+' نقلة · '+specs.filter(s=>s.state==='watch').length+' متفرّج</p><div class="coins glass" style="font-size:18px">'+ic('coin')+'+'+coins+'</div>'+rkH+'<div class="row"><button class="pbtn" data-a="again">'+ic('board')+'مباراة أخرى</button><button class="gbtn" data-a="back">العودة للتجوّل</button></div></div></div>',
+  setTimeout(()=>{if(!game||game.id!==endedId)return;showLayer('<div class="scrim"><div class="card dlg"><span class="tag">'+esc(why)+'</span><h3>'+title+'</h3><p>أكلت '+game.capMe+' · أكل الخصم '+game.capOpp+' · '+game.plies+' نقلة · '+specs.filter(s=>s.state==='watch').length+' متفرّج</p><div class="coins glass" style="font-size:18px">'+ic('coin')+'+'+coins+'</div>'+rkH+'<div class="row"><button class="pbtn" data-a="again">'+ic('board')+'مباراة أخرى</button><button class="gbtn" data-a="back">العودة للتجوّل</button></div></div></div>',
    {again:()=>{closeLayer();rematch()},back:()=>{closeLayer();leaveMatch()}})},1300)}
 function cleanupBoard(){clearMarks();for(const m of game.meshes)if(m)scene.remove(m);scene.children.filter(o=>o.userData&&o.userData.side!=null).forEach(o=>scene.remove(o))}
 async function rematch(){if(!requirePlayAccount())return;const t=game.table,n=game.npc;game.keepSpecs=specs.slice();cleanupBoard();$('#mh').hidden=true;mode='toMatch';
@@ -1977,7 +1984,7 @@ function npcRating(n){return 850+n.lvl*35}
 function npcDiff(n){return n.lvl<8?0:n.lvl<16?1:n.lvl<24?2:3}
 function isUnlocked(k){if(S.unlockAll)return true;const d=DESTS.find(x=>x.k===k);if(!d||!d.need)return true;return level()>=d.need.level}
 function reqText(k){const d=DESTS.find(x=>x.k===k);if(!d||!d.need)return '';return 'يُفتح عند المستوى '+d.need.level+' (أنت '+level()+')'}
-function addXP(n){const l0=level();S.xp+=n;const l1=level();persist();if(l1>l0){setTimeout(()=>{toast('وصلت للمستوى '+l1+'! +50 عملة',3200);SFX.win();addCoins(50);for(const d of DESTS)if(d.need&&d.need.level===l1)setTimeout(()=>toast('وجهة جديدة مفتوحة: '+THEMES[d.k].name+' — افتح «الرحلة» للسفر',3800),3300)},400)}updateProfile()}
+function addXP(n){const l0=level();S.xp+=n;const l1=level();if(l1>l0)S.coins+=50;persist();if(l1>l0){setTimeout(()=>{toast('وصلت للمستوى '+l1+'! +50 عملة',3200);SFX.win();for(const d of DESTS)if(d.need&&d.need.level===l1)setTimeout(()=>toast('وجهة جديدة مفتوحة: '+THEMES[d.k].name+' — افتح «الرحلة» للسفر',3800),3300)},400)}updateProfile()}
 function updateProfile(){$('#pName').textContent=S.name;$('#avI').textContent=S.name.trim()[0]||'ض';const tr=tierOf(S.rating||1000);$('#pLvl').innerHTML='المستوى '+level()+' · <span style="color:'+tr[2]+'">'+tr[1]+' '+(S.rating||1000)+'</span>';$('#coinN').textContent=S.coins.toLocaleString('en');
   const daily=S.daily&&S.daily.q.some(q=>q.done&&!q.claimed);$('#tripDot').hidden=!(daily||DESTS.some(d=>isUnlocked(d.k)&&d.k!==S.country&&!(S.seen||[]).includes(d.k)))}
 function today(){const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()}
@@ -1985,10 +1992,11 @@ function rollDaily(){const td=today();if(S.daily&&S.daily.date===td)return;const
 function track(id,n){if(!S.daily)return;for(const q of S.daily.q){if(q.id!==id||q.done)continue;const d=DPOOL.find(x=>x.id===id);q.p=Math.min(d.g,q.p+(n||1));if(q.p>=d.g){q.done=true;toast('مهمة يومية مكتملة: '+d.t+' — استلم جائزتها من «الرحلة»',3400);SFX.king()}}persist();updateProfile()}
 function checkAch(){for(const a of ACH){if(S.ach.includes(a.id))continue;const ok=a.c?a.c():(a.p()[0]>=a.p()[1]);if(ok){S.ach.push(a.id);setTimeout(()=>{toast('إنجاز جديد: '+a.t+'  +'+a.r+' عملة',3400);SFX.win()},200);addCoins(a.r)}}persist()}
 /* ---------- login streak & first-run ---------- */
-function checkLogin(){const td=today();if(S.lastLogin===td)return;const y=new Date();y.setDate(y.getDate()-1);const yd=y.getFullYear()+'-'+(y.getMonth()+1)+'-'+y.getDate();S.streak=S.lastLogin===yd?((S.streak||0)%7)+1:1;S.lastLogin=td;S.loginClaimed=false;persist()}
-function showLogin(then){const d=S.streak||1;mode='card';
+function streakState(){if(S.streakVersion===2)return;S.legacyStreak=+S.streak||0;S.loginStreak=S.lastLogin?Math.max(1,Math.min(7,+S.streak||1)):0;S.winStreak=0;S.streakVersion=2}
+function checkLogin(){streakState();const td=today();if(S.lastLogin===td)return;const y=new Date();y.setDate(y.getDate()-1);const yd=y.getFullYear()+'-'+(y.getMonth()+1)+'-'+y.getDate();S.loginStreak=S.lastLogin===yd?((S.loginStreak||0)%7)+1:1;S.lastLogin=td;S.loginClaimed=false;persist()}
+function showLogin(then){streakState();const d=S.loginStreak||1;mode='card';
   showLayer('<div class="scrim"><div class="card dlg"><span class="tag">مكافأة الدخول اليومي</span><h3>اليوم '+d+' من 7</h3><div class="streak">'+LOGINR.map((r,i)=>'<div class="'+(i+1===d?'on':i+1<d?'past':'')+'">يوم '+(i+1)+'<br><b>'+r+'</b></div>').join('')+'</div><p>ادخل كل يوم لتكبر الجائزة. اليوم السابع فيه '+LOGINR[6]+' عملة.</p><button class="pbtn" data-a="ok">'+ic('coin')+'استلم '+LOGINR[d-1]+' عملة</button></div></div>',
-   {ok:()=>{S.loginClaimed=true;addCoins(LOGINR[d-1]);SFX.win();persist();closeLayer()}},()=>{mode='explore';then&&then()})}
+   {ok:()=>{if(!requirePlayAccount()||S.loginClaimed)return;S.loginClaimed=true;addCoins(LOGINR[d-1]);SFX.win();persist();closeLayer()}},()=>{mode='explore';then&&then()})}
 function firstRun(){if(window.DAMA_AUTH&&window.DAMA_AUTH.guest)return;const next=()=>{if(!S.lessonsDone&&!S.tutAsked){S.tutAsked=true;persist();mode='card';showLayer('<div class="scrim"><div class="card dlg"><span class="tag">أول مرة؟</span><h3>تعلّم الدامة الكويتية</h3><p>ستة دروس قصيرة تشرح الحركة والأكل الإجباري والأكل المتسلسل والكش. تكسب 100 عملة عند الإنهاء.</p><div class="row"><button class="pbtn" data-a="go">'+ic('board')+'ابدأ الدروس</button><button class="gbtn" data-a="x">لاحقاً</button></div></div></div>',{go:()=>{closeLayer();setTimeout(()=>openSheet('games','learn'),50)},x:()=>closeLayer()},()=>{mode='explore'})}};
   checkLogin();if(!S.loginClaimed)showLogin(next);else next()}
 /* ---------- AI with difficulty ---------- */
@@ -2000,12 +2008,14 @@ function onMoveStats(m,side,was,now){if(side!==1)return;if(m.caps.length){S.stat
   if(Math.abs(was)===1&&Math.abs(now)===2){S.stats.kings++;track('king')}checkAch()}
 function onMatchEnd(res){const g=game;S.stats.games++;track('play3');const crowd=specs.filter(s=>s.state==='watch').length;S.stats.crowd=Math.max(S.stats.crowd,crowd);if(crowd>=6)track('crowd6');
   if(res>0){S.stats.wins++;track('win2');if(g.quick){S.stats.quickWins++;track('quick')}if(g.diff>=2)track('hard');if(g.diff===3)S.stats.expertWins++}
-  const ro=npcRating(g.npc),E=1/(1+Math.pow(10,(ro-S.rating)/400)),sc=res>0?1:res<0?0:.5,delta=Math.round(32*(sc-E));S.rating=Math.max(100,S.rating+delta);S.stats.bestRating=Math.max(S.stats.bestRating,S.rating);const tr=tierOf(S.rating);
+  const ro=g.online?(+g.online.opponentRating||1000):npcRating(g.npc),own=g.online?(+g.online.selfRating||S.rating):S.rating,E=1/(1+Math.pow(10,(ro-own)/400)),sc=res>0?1:res<0?0:.5,delta=Math.round(32*(sc-E));S.rating=Math.max(100,S.rating+delta);S.stats.bestRating=Math.max(S.stats.bestRating,S.rating);const tr=tierOf(S.rating);
   checkAch();persist();updateProfile();return '<div class="tag" style="background:rgba(255,255,255,.08);color:'+tr[2]+';border-color:'+tr[2]+'">التصنيف '+(delta>=0?'+':'')+delta+' ← '+S.rating+' · '+tr[1]+'</div>'}
 function fmtT(s){s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function setupClocks(){for(const[id,pl]of[['meClk','#meP'],['oppClk','#oppP']]){let e=document.getElementById(id);if(!e){e=document.createElement('span');e.id=id;e.className='clk';$(pl+' .prow').appendChild(e)}e.hidden=!game.quick}updClocks()}
 function updClocks(){if(!game||!game.quick)return;const a=$('#meClk'),b=$('#oppClk');if(!a)return;a.textContent=fmtT(game.clock[0]);b.textContent=fmtT(game.clock[1]);a.classList.toggle('low',game.clock[0]<20);b.classList.toggle('low',game.clock[1]<20)}
-function tickClock(dt){if(mode!=='match'||!game||!game.quick||game.over)return;const i=game.turn===1?0:1;game.clock[i]-=dt;if(frame%6===0)updClocks();if(game.clock[i]<=0){updClocks();endGame(i===0?-1:1,'انتهى الوقت')}}
+function tickClock(){if(mode!=='match'||!game||!game.quick||game.over)return;const now=performance.now();
+  if(game.clockAt==null){game.clockAt=now;return}const elapsed=Math.max(0,(now-game.clockAt)/1000);game.clockAt=now;
+  const i=game.turn===1?0:1;game.clock[i]=Math.max(0,game.clock[i]-elapsed);updClocks();if(game.clock[i]<=0)endGame(i===0?-1:1,'انتهى الوقت')}
 function openNPCCard(n){mode='card';const key=n.name+'|'+n.from;const muted=S.muted.includes(key);const df=npcDiff(n);const dc=['#5ac58b','#e7a94b','#ea6a5e','#b07aff'][df];
   showLayer('<div class="scrim" data-x="1"><div class="card dlg" style="text-align:right;align-items:stretch">'+
    '<div class="prow"><div class="pav" style="width:52px;height:52px;font-size:22px;background:'+OUTC[n.look.outfitColor]+';color:'+(n.look.outfitColor===0||n.look.outfitColor===4||n.look.outfitColor===9?'#2a1606':'#fff')+'">'+n.name[0]+'</div><div style="flex:1;min-width:0"><h3 style="font-size:22px">'+n.name+'</h3><div class="psub">من '+n.from+' · المستوى '+n.lvl+' · تصنيف '+npcRating(n)+'</div></div><span class="tag" style="color:'+dc+';border-color:'+dc+';background:transparent">'+DIFFN[df]+'</span></div>'+
@@ -2051,24 +2061,24 @@ function mbTap(fx,fy){if(!requirePlayAccount())return;if(MB.lock)return;const k=
 function lessonView(B){const L=LESSONS[S.lessonIdx];const done=!!S.lessonsDone;
   B.innerHTML='<div class="mapgrid"><canvas class="mb" id="mbC" width="360" height="360"></canvas><div><div class="sec">الدرس '+(S.lessonIdx+1)+' من '+LESSONS.length+'</div><h3 style="margin:0 0 6px;font-family:var(--f-display);color:var(--sand);font-size:22px">'+L.t+'</h3><p style="margin:0 0 12px;line-height:1.7;color:#e9dcc3" id="mbMsg">'+L.d+'</p><div class="row" style="justify-content:flex-start"><button class="gbtn" data-a="do" data-k="lreset">إعادة الدرس</button><button class="pbtn" data-a="do" data-k="lnext" id="lNext" disabled>الدرس التالي</button></div>'+
    '<div class="chips" style="margin-top:12px">'+LESSONS.map((x,i)=>'<button class="chip'+(i===S.lessonIdx?' sel':'')+'" data-a="do" data-k="lgo" data-v="'+i+'">'+(i<S.lessonIdx||done?ic('check'):'')+(i+1)+'</button>').join('')+'</div>'+(done?'<div class="note">أكملت كل الدروس. جرّب الألغاز الحين!</div>':'')+'</div></div>';hydrateIcons(B);
-  mbSetup($('#mbC'),boardFrom(L),(m,was)=>{const ok=L.goal==='move'||L.goal==='cap'&&m.caps.length>=L.n||L.goal==='king'&&was===1&&MB.b.some(v=>v===2);
+  const boardEl=$('#mbC');mbSetup(boardEl,boardFrom(L),(m,was)=>{const ok=L.goal==='move'||L.goal==='cap'&&m.caps.length>=L.n||L.goal==='king'&&was===1&&MB.b.some(v=>v===2);
     if(ok){MB.lock=true;$('#mbMsg').innerHTML='<b style="color:var(--ok)">أحسنت!</b> '+(S.lessonIdx<LESSONS.length-1?'انتقل للدرس التالي.':'أنهيت الدروس كلها.');SFX.win();const nb=$('#lNext');nb.disabled=false;
       if(S.lessonIdx===LESSONS.length-1&&!S.lessonsDone){S.lessonsDone=true;addCoins(100);addXP(50);checkAch();nb.textContent='إلى الألغاز'}}
-    else{$('#mbMsg').textContent='قريب! '+L.d;setTimeout(()=>{if($('#mbC'))lessonView(B)},900)}})}
+    else{$('#mbMsg').textContent='قريب! '+L.d;setTimeout(()=>{if($('#mbC')===boardEl&&MB.el===boardEl)lessonView(B)},900)}})}
 function puzzleView(B){const i=Math.min(S.puzIdx,PUZ.length-1),pz=PUZ[i];const solved=S.solved.includes(i);
   B.innerHTML='<div class="mapgrid"><canvas class="mb" id="mbC" width="360" height="360"></canvas><div><div class="sec">لغز '+(i+1)+' من '+PUZ.length+(solved?' · محلول':'')+'</div><h3 style="margin:0 0 6px;font-family:var(--f-display);color:var(--sand);font-size:22px">الأبيض يلعب ويكسب</h3><p style="margin:0 0 12px;line-height:1.7;color:#e9dcc3" id="mbMsg">لاقِ النقلة الذكية: أحياناً تضحّي بحجر عشان الخصم ينجبر ياكله، وبعدها تأكل أكثر. خصمك ياكل إجبارياً مثلك.</p><div class="row" style="justify-content:flex-start"><button class="gbtn" data-a="do" data-k="preset">إعادة</button><button class="gbtn" data-a="do" data-k="phint">تلميح</button><button class="pbtn" data-a="do" data-k="pnext">'+(i<PUZ.length-1?'اللغز التالي':'من البداية')+'</button></div>'+
    '<div class="chips" style="margin-top:12px">'+PUZ.map((x,j)=>'<button class="chip'+(j===i?' sel':'')+'" data-a="do" data-k="pgo" data-v="'+j+'">'+(S.solved.includes(j)?ic('check'):'')+(j+1)+'</button>').join('')+'</div><div class="note">كل لغز محلول = 40 عملة و 20 خبرة.</div></div></div>';hydrateIcons(B);
-  mbSetup($('#mbC'),boardStr(pz.b),m=>{const ok=m.from[0]===pz.m.from[0]&&m.from[1]===pz.m.from[1]&&JSON.stringify(m.steps)===JSON.stringify(pz.m.steps);MB.lock=true;
-    if(!ok){$('#mbMsg').innerHTML='<b style="color:var(--bad)">مو هذي.</b> فكّر: وين تقدر تجبر خصمك ياكل عشان تفتح لك سلسلة؟';SFX.lose();setTimeout(()=>{if($('#mbC'))puzzleView(B)},1400);return}
+  const boardEl=$('#mbC');mbSetup(boardEl,boardStr(pz.b),m=>{const ok=m.from[0]===pz.m.from[0]&&m.from[1]===pz.m.from[1]&&JSON.stringify(m.steps)===JSON.stringify(pz.m.steps);MB.lock=true;
+    if(!ok){$('#mbMsg').innerHTML='<b style="color:var(--bad)">مو هذي.</b> فكّر: وين تقدر تجبر خصمك ياكل عشان تفتح لك سلسلة؟';SFX.lose();setTimeout(()=>{if($('#mbC')===boardEl&&MB.el===boardEl)puzzleView(B)},1400);return}
     $('#mbMsg').innerHTML='<b style="color:var(--ok)">صح!</b> شوف رد الخصم…';SFX.king();
-    setTimeout(()=>{if(!$('#mbC'))return;MB.b=applyMove(MB.b,pz.r,-1);MB.flash=pz.r.caps;mbDraw();SFX.cap();
-      setTimeout(()=>{if(!$('#mbC'))return;MB.flash=pz.f.caps;MB.b=applyMove(MB.b,pz.f,1);mbDraw();SFX.cap();$('#mbMsg').innerHTML='<b style="color:var(--ok)">ممتاز!</b> ضحّيت بحجر وأكلت '+pz.f.caps.length+'.';
+    setTimeout(()=>{if($('#mbC')!==boardEl||MB.el!==boardEl)return;MB.b=applyMove(MB.b,pz.r,-1);MB.flash=pz.r.caps;mbDraw();SFX.cap();
+      setTimeout(()=>{if($('#mbC')!==boardEl||MB.el!==boardEl)return;MB.flash=pz.f.caps;MB.b=applyMove(MB.b,pz.f,1);mbDraw();SFX.cap();$('#mbMsg').innerHTML='<b style="color:var(--ok)">ممتاز!</b> ضحّيت بحجر وأكلت '+pz.f.caps.length+'.';
         if(!S.solved.includes(i)){S.solved.push(i);S.stats.puzzles++;addCoins(40);addXP(20);track('puzzle2');checkAch()}},1000)},800)})}
 function rankView(B){const tr=tierOf(S.rating),nx=TIERS.find(t=>t[0]>S.rating);const names=['بو ناصر','سارة','Kenji','أمارا','تركي','لوكاس','فيكرام','إليف','حمد','ريم','جاسم','دانة'];const R=rng(77);const rows=names.map(n=>[n,Math.round(900+R()*900)]);rows.push([S.name+' (أنت)',S.rating]);rows.sort((a,b)=>b[1]-a[1]);
   B.innerHTML='<div class="mapgrid"><div style="text-align:center"><div class="badge" style="background:'+tr[2]+'">'+tr[1]+'</div><h3 style="margin:10px 0 2px;font-family:var(--f-display);font-size:30px;color:var(--sand)">'+S.rating+'</h3><p style="margin:0;color:var(--muted)">'+(nx?'باقي '+(nx[0]-S.rating)+' نقطة لـ'+nx[1]:'أعلى تصنيف!')+'</p>'+
    '<div class="chips" style="justify-content:center;margin-top:12px"><span class="chip">فوز '+S.stats.wins+'</span><span class="chip">مباريات '+S.stats.games+'</span><span class="chip">أعلى تصنيف '+S.stats.bestRating+'</span><span class="chip">أطول سلسلة '+S.stats.maxChain+'</span></div></div>'+
-   '<div><div class="sec">لوحة الصدارة <span class="tag">محاكاة</span></div><div class="lb">'+rows.map((r,i)=>'<div class="'+(r[0].includes('(أنت)')?'me':'')+'"><span>'+(i+1)+'</span><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('')+'</div></div></div>'}
-function dailyView(B){rollDaily();const d=S.streak||1;
+   '<div><div class="sec">لوحة الصدارة <span class="tag">محاكاة</span></div><div class="lb">'+rows.map((r,i)=>'<div class="'+(r[0].includes('(أنت)')?'me':'')+'"><span>'+(i+1)+'</span><span>'+esc(r[0])+'</span><b>'+r[1]+'</b></div>').join('')+'</div></div></div>'}
+function dailyView(B){streakState();rollDaily();const d=S.loginStreak||1;
   B.innerHTML='<div class="sec">مهام اليوم</div>'+S.daily.q.map((q,i)=>{const def=DPOOL.find(x=>x.id===q.id);return '<div class="quest'+(q.claimed?' done':'')+'"><span class="ck">'+(q.claimed?ic('check'):'')+'</span><span class="qt">'+def.t+' <small style="color:var(--muted)">('+q.p+'/'+def.g+')</small></span>'+(q.done&&!q.claimed?'<button class="pbtn" style="min-height:36px;padding:0 12px" data-a="do" data-k="dclaim" data-v="'+i+'">استلم '+def.r+'</button>':'<span class="qr">+'+def.r+'</span>')+'</div>'}).join('')+
    '<div class="sec">الدخول اليومي</div><div class="streak">'+LOGINR.map((r,i)=>'<div class="'+(i+1===d?'on':i+1<d?'past':'')+'">يوم '+(i+1)+'<br><b>'+r+'</b></div>').join('')+'</div><div class="note">المهام تتجدد كل يوم. كل مهمة تعطي عملات و30 خبرة.</div>';hydrateIcons(B)}
 function achView(B){B.innerHTML='<div class="sec">'+S.ach.length+' من '+ACH.length+' إنجازات</div>'+ACH.map(a=>{const got=S.ach.includes(a.id);const p=a.p?a.p():null;return '<div class="achi'+(got?' got':'')+'"><span class="ck" style="width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:'+(got?'var(--ok)':'rgba(255,255,255,.08)')+';color:'+(got?'#0d2a1a':'var(--muted)')+'">'+ic(got?'check':'lock','width:16px;height:16px')+'</span><div style="flex:1;min-width:0"><b>'+a.t+'</b><div class="psub">'+a.d+'</div>'+(p&&!got?'<div class="pr"><i style="width:'+Math.min(100,p[0]/p[1]*100)+'%"></i></div>':'')+'</div><span class="qr">+'+a.r+'</span></div>'}).join('');hydrateIcons(B)}
@@ -2537,7 +2547,7 @@ function lbBuildUI(){let el=$('#lobby');if(!el){el=document.createElement('div')
   <div class="lb-tr">
     <button class="lb-prof pnl cut pe" id="lbProf"><span class="av" style="box-shadow:${frameCss(S.frame)}">${esc(S.name.trim()[0]||'ض')}</span><span style="text-align:right;flex:1"><b>${S.clan?'<span style="color:'+S.clan.color+'">['+esc(S.clan.tag)+']</span> ':''}${esc(S.name)}</b><small class="lb-ttl">«${esc(S.title||'لاعب ديرة')}»</small><span class="tier" style="background:${tr[2]}">${tr[1]} · ${S.rating||1000}</span><span style="font-size:10.5px;color:var(--muted);margin-inline-start:6px">المستوى ${lv}</span><div class="xp"><i style="width:${xp}%"></i></div></span></button>
     <div class="lb-row">
-      ${S.streak>0?'<span class="lb-streak pnl cut">'+ic('flame')+S.streak+'</span>':''}<button class="lb-pill pnl cut pe" id="lbCoins">${ic('coin')}<span>${S.coins}</span><span class="add">${ic('plus')}</span></button>
+      ${S.winStreak>0?'<span class="lb-streak pnl cut">'+ic('flame')+S.winStreak+'</span>':''}<button class="lb-pill pnl cut pe" id="lbCoins">${ic('coin')}<span>${S.coins}</span><span class="add">${ic('plus')}</span></button>
       <button class="lb-ib pnl cut pe" id="lbMail" aria-label="البريد">${ic('mail')}${!S.loginClaimed?'<i class="dot"></i>':''}</button>
       <button class="lb-ib pnl cut pe" id="lbFriends" aria-label="الأصدقاء">${ic('users')}${socBadge()?'<i class="bd">'+socBadge()+'</i>':''}</button>
       <button class="lb-ib pnl cut pe" id="lbSnd" aria-label="الصوت">${ic((S.settings.music||0)+(S.settings.amb||0)>0?'speaker':'speakeroff')}</button>
@@ -2985,8 +2995,8 @@ Object.assign(ICONS,{
   replay:'<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v4h4"/>',lock2:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'});
 
 /* ---------- حالة اللاعب ---------- */
-function v7State(){S.titles=S.titles||['مبتدئ الديرة'];S.title=S.title||'مبتدئ الديرة';S.frames=S.frames||['none'];S.frame=S.frame||'none';
-  S.pass=S.pass||{prem:false,cf:[],cp:[]};S.streak=S.streak||0;S.bestStreak=S.bestStreak||0;S.replays=S.replays||[];
+function v7State(){streakState();S.titles=S.titles||['مبتدئ الديرة'];S.title=S.title||'مبتدئ الديرة';S.frames=S.frames||['none'];S.frame=S.frame||'none';
+  S.pass=S.pass||{prem:false,cf:[],cp:[]};S.winStreak=S.winStreak||0;S.bestStreak=S.bestStreak||0;S.replays=S.replays||[];
   S.safety=Object.assign({autoQ:true,filter:true,reqFrom:'all',showOnline:true},S.safety||{});S.losses=S.losses||0}
 const FRAMES=[{id:'none',name:'بدون',css:'none'},{id:'brass',name:'نحاسي',css:'0 0 0 3px #c9a24a'},{id:'sadu',name:'سدو',css:'0 0 0 3px #8e2a22,0 0 0 6px #efe3c8'},
   {id:'pearl',name:'لؤلؤي',css:'0 0 0 3px #f4efe4,0 0 12px 2px rgba(255,255,255,.6)'},{id:'ruby',name:'ياقوتي',css:'0 0 0 3px #b5312c,0 0 14px 2px rgba(181,49,44,.7)'},{id:'legend',name:'أسطوري',css:'0 0 0 3px #ffd27e,0 0 0 6px #ff7aa8,0 0 18px 4px rgba(255,122,168,.6)'}];
@@ -3009,18 +3019,18 @@ const PASS=(()=>{const P=[];for(let l=1;l<=30;l++){const free=l%5===0?{t:'coins'
   const prem={2:{t:'emote',id:'bow'},3:{t:'color',id:'teal'},4:{t:'frame',id:'brass'},6:{t:'color',id:'navy'},8:{t:'emote',id:'dance'},9:{t:'color',id:'jade'},10:{t:'table',id:'sadu'},11:{t:'frame',id:'sadu'},
     12:{t:'emote',id:'ardha'},14:{t:'title',v:'صياد الكش'},15:{t:'table',id:'marble'},18:{t:'frame',id:'pearl'},20:{t:'table',id:'gold'},21:{t:'title',v:'ملك القعدات'},22:{t:'color',id:'gold'},24:{t:'frame',id:'ruby'},28:{t:'title',v:'أسطورة المباركية'},30:{t:'frame',id:'legend'}}[l]||{t:'coins',n:80};
   P.push({l,free,prem})}return P})();
-const passLv=()=>Math.min(30,level());
-function passClaimable(){v7State();let n=0;for(const p of PASS){if(p.l>passLv())break;if(!S.pass.cf.includes(p.l))n++;if(S.pass.prem&&!S.pass.cp.includes(p.l))n++}return n}
-function openPass(){v7State();openPanel('pass','موسم الديرة',null,null,B=>{const lv=passLv(),xp=S.xp%100;
+const passLv=()=>{seasonState();return Math.min(30,Math.floor((S.pass&&S.pass.xp!=null?S.pass.xp:S.xp)/100)+1)};
+function passClaimable(){v7State();if(!seasonClaimOpen())return 0;let n=0;for(const p of PASS){if(p.l>passLv())break;if(!S.pass.cf.includes(p.l))n++;if(S.pass.prem&&!S.pass.cp.includes(p.l))n++}return n}
+function openPass(){v7State();openPanel('pass',seasonName(),null,null,B=>{const lv=passLv(),xp=(S.pass.xp||0)%100;
   B.innerHTML='<div class="v7ph"><div class="v7lv">'+lv+'</div><div style="flex:1"><b>المستوى '+lv+' من 30</b><div class="v7bar"><i style="width:'+(lv>=30?100:xp)+'%"></i></div><small>'+(lv>=30?'وصلت آخر مستوى!':(100-xp)+' خبرة للمستوى الجاي · العب وافُز عشان تجمع خبرة')+'</small></div><div class="v7pa">'+
    (S.pass.prem?'<span class="sbtn" style="opacity:.8">'+ic('star')+'الممر الذهبي مفعّل</span>':'<button class="sbtn pri" data-a="do" data-k="prem">'+ic('star')+'فعّل الممر الذهبي · 600 عملة</button>')+(passClaimable()?'<button class="sbtn pri" data-a="do" data-k="all">استلم الكل ('+passClaimable()+')</button>':'')+'</div></div>'+
    '<div class="v7rows"><div class="v7lab"><span>مجاني</span><span>ذهبي</span></div><div class="v7track" id="v7track">'+PASS.map(p=>{const open=p.l<=lv;
-     const cell=(r,kind)=>{const done=(kind==='f'?S.pass.cf:S.pass.cp).includes(p.l),lock=kind==='p'&&!S.pass.prem;const can=open&&!done&&!lock;
+     const cell=(r,kind)=>{const done=(kind==='f'?S.pass.cf:S.pass.cp).includes(p.l),lock=kind==='p'&&!S.pass.prem;const can=seasonClaimOpen()&&open&&!done&&!lock;
        return '<button class="v7cell'+(kind==='p'?' prem':'')+(can?' can':'')+(done?' done':'')+(!open||lock?' off':'')+'" data-a="do" data-k="claim" data-v="'+kind+p.l+'"'+(can?'':' disabled')+'>'+ic(rewardIcon(r))+'<small>'+rewardLabel(r)+'</small>'+(done?'<i class="v7ok">'+ic('check')+'</i>':lock?'<i class="v7ok">'+ic('lock2')+'</i>':'')+'</button>'};
-     return '<div class="v7col'+(p.l===lv?' cur':'')+'"><b>'+p.l+'</b>'+cell(p.free,'f')+cell(p.prem,'p')+'</div>'}).join('')+'</div></div><div class="note">المكافآت والعملات في هذا النموذج تجريبية · لا يوجد دفع حقيقي</div>';
+     return '<div class="v7col'+(p.l===lv?' cur':'')+'"><b>'+p.l+'</b>'+cell(p.free,'f')+cell(p.prem,'p')+'</div>'}).join('')+'</div></div><div class="note">تُستلم المكافآت حتى 7 أيام بعد نهاية الموسم · لا يوجد دفع حقيقي</div>';
   setTimeout(()=>{const t=$('#v7track'),c=t&&t.querySelector('.cur');if(c)t.scrollLeft=c.offsetLeft-t.clientWidth/2},30)},
-  (k,v)=>{if(k==='prem'){if(S.coins<600){toast('تحتاج 600 عملة',1800);return}S.coins-=600;S.pass.prem=true;persist();updateProfile();toast('تم تفعيل الممر الذهبي ✨',2000);SFX.win()}
-   else if(k==='claim'){const kind=v[0],l=+v.slice(1),p=PASS[l-1];const arr=kind==='f'?S.pass.cf:S.pass.cp;if(arr.includes(l))return;arr.push(l);const lab=grantReward(kind==='f'?p.free:p.prem);toast('استلمت: '+lab,2000);SFX.pop&&SFX.pop()}
+  (k,v)=>{if(!requirePlayAccount())return false;if(k==='prem'&&!seasonActive()){toast('الموسم انتهى؛ ما تقدر تشتري الممر');return false}if(k!=='prem'&&!seasonClaimOpen()){toast('فترة استلام مكافآت الموسم انتهت');return false}if(k==='prem'){if(S.pass.prem)return false;if(S.coins<600){toast('تحتاج 600 عملة',1800);return}S.coins-=600;S.pass.prem=true;persist();updateProfile();toast('تم تفعيل الممر الذهبي ✨',2000);SFX.win()}
+   else if(k==='claim'){const kind=v[0],l=+v.slice(1),p=PASS[l-1];if(!p||l>passLv()||!['f','p'].includes(kind)||(kind==='p'&&!S.pass.prem))return false;const arr=kind==='f'?S.pass.cf:S.pass.cp;if(arr.includes(l))return;arr.push(l);const lab=grantReward(kind==='f'?p.free:p.prem);toast('استلمت: '+lab,2000);SFX.pop&&SFX.pop()}
    else if(k==='all'){const got=[];for(const p of PASS){if(p.l>passLv())break;if(!S.pass.cf.includes(p.l)){S.pass.cf.push(p.l);got.push(grantReward(p.free))}if(S.pass.prem&&!S.pass.cp.includes(p.l)){S.pass.cp.push(p.l);got.push(grantReward(p.prem))}}toast('استلمت '+got.length+' مكافأة',2200);SFX.win()}
    persist();return true})}
 
@@ -3030,13 +3040,13 @@ function rollChest(){const r=Math.random();if(r<.62)return{t:'coins',n:30+Math.f
   if(r<.86){const c=pick(SHOP.color.filter(c=>!c.usd));return{t:'color',id:c.id}}if(r<.94)return{t:'frame',id:pick(['brass','sadu','pearl'])};return{t:'title',v:pick(['محظوظ الديرة','صاحب الصندوق'])}}
 function openChest(){v7State();const ready=chestReady();
   showLayer('<div class="scrim" data-x="1"><div class="card dlg v7chest"><span class="tag">الصندوق اليومي</span><div class="v7box'+(ready?' ready':'')+'" id="v7box"><svg viewBox="0 0 120 100"><g class="lid"><path d="M10 44a50 26 0 0 1 100 0v6H10z" fill="#8a5a33" stroke="#3b2616" stroke-width="3"/><path d="M10 44h100" stroke="#e2b04a" stroke-width="5"/></g><rect x="10" y="48" width="100" height="44" rx="4" fill="#7a4e2c" stroke="#3b2616" stroke-width="3"/><path d="M10 62h100M10 78h100" stroke="#5a3a20" stroke-width="2"/><rect x="50" y="52" width="20" height="18" rx="3" fill="#e2b04a" stroke="#7a5a20" stroke-width="2"/></svg><div class="v7burst"></div></div><h3 id="v7cT">'+(ready?'صندوق اليوم جاهز':'رجع بكرة لصندوق جديد')+'</h3><p id="v7cP">'+(ready?'افتحه وشوف حظك اليوم':'كل يوم صندوق مجاني فيه عملات أو حركات أو ألوان أو إطارات')+'</p><div class="row">'+(ready?'<button class="pbtn" data-a="open">'+ic('chest')+'افتح الصندوق</button>':'')+'<button class="gbtn" data-a="x">إغلاق</button></div></div></div>',
-    {x:()=>{closeLayer();if(LOBBY.on)lbBuildUI()},open:b=>{b.disabled=true;const box=$('#v7box');box.classList.add('shake');SFX.tap();
-      setTimeout(()=>{box.classList.remove('shake');box.classList.add('open');S.chestDay=today();const r=rollChest();const lab=grantReward(r);persist();$('#v7cT').textContent='حصلت على: '+lab;$('#v7cP').textContent='الصندوق الجاي بعد منتصف الليل';SFX.win();b.remove()},1300)}})}
+    {x:()=>{closeLayer();if(LOBBY.on)lbBuildUI()},open:b=>{if(!requirePlayAccount()||!chestReady())return;b.disabled=true;S.chestDay=today();const lab=grantReward(rollChest());persist();const box=$('#v7box');box.classList.add('shake');SFX.tap();
+      setTimeout(()=>{if($('#v7box')!==box)return;box.classList.remove('shake');box.classList.add('open');$('#v7cT').textContent='حصلت على: '+lab;$('#v7cP').textContent='الصندوق الجاي بعد منتصف الليل';SFX.win();b.remove()},1300)}})}
 
 /* ---------- سلسلة الفوز ---------- */
-function streakOnEnd(res){v7State();let msg='';if(res>0){S.streak++;S.bestStreak=Math.max(S.bestStreak,S.streak);
-    const bonus={3:{t:'coins',n:50},5:{t:'coins',n:120},7:{t:'title',v:'نار الديرة'},10:{t:'frame',id:'ruby'}}[S.streak];
-    msg='🔥 سلسلة فوز '+S.streak+(bonus?' · مكافأة: '+grantReward(bonus):'')}else{if(S.streak>=3)msg='انتهت سلسلة الفوز ('+S.streak+')';S.streak=0}persist();return msg}
+function streakOnEnd(res){v7State();let msg='';if(res>0){S.winStreak++;S.bestStreak=Math.max(S.bestStreak,S.winStreak);
+    const bonus={3:{t:'coins',n:50},5:{t:'coins',n:120},7:{t:'title',v:'نار الديرة'},10:{t:'frame',id:'ruby'}}[S.winStreak];
+    msg='🔥 سلسلة فوز '+S.winStreak+(bonus?' · مكافأة: '+grantReward(bonus):'')}else{if(S.winStreak>=3)msg='انتهت سلسلة الفوز ('+S.winStreak+')';S.winStreak=0}persist();return msg}
 
 /* ---------- الإعادات وتحليل المباراة ---------- */
 const _onMoveStats0=onMoveStats;
@@ -3251,18 +3261,27 @@ function openRoom(tab){roomTab=tab||roomTab;openPanel('room','غرفة خاصة'
     else if(k==='hstart'){const h=ROOM.host;ROOM=null;playVs(h,{tag:'room',quick:true,lvl:Math.max(2,Math.min(26,Math.round((h.rating-900)/38)))});return false}return true})}
 
 /* ---------- الدواوين ---------- */
+function clanWeekId(){return String(Math.floor((Date.now()-345600000)/604800000))}
+function clanWeekSave(){if(S.clan&&S.clan.week){S.clanWeeks=S.clanWeeks||{};S.clanWeeks[S.clan.id+'|'+S.clan.week]={pts:S.clan.pts||0,myPts:S.clan.myPts||0}}}
+function clanWeek(){const c=S.clan;if(!c)return;const w=clanWeekId();S.clanWeeks=S.clanWeeks||{};S.clanWeekRewards=S.clanWeekRewards||{};
+  if(!c.week){c.week=w;if(c.goalDone)S.clanWeekRewards[w]=true;const old=S.clanWeeks[c.id+'|'+w];if(old)Object.assign(c,old)}
+  else if(c.week!==w){clanWeekSave();Object.assign(c,{week:w,pts:0,myPts:0})}
+  c.goalDone=!!S.clanWeekRewards[w]}
+function clanClaim(){if(!requirePlayAccount())return false;clanWeek();const c=S.clan,w=clanWeekId();if(!c||c.pts<500||S.clanWeekRewards[w])return false;
+  S.clanWeekRewards[w]=true;c.goalDone=true;addCoins(200);clanWeekSave();persist();toast('جائزة هدف الأسبوع: 200 عملة',1800);return true}
+
 const CLANS=[{id:'c1',name:'ديوانية الشامية',tag:'شام',color:'#c0392b',lvl:7,members:38,pts:4210},{id:'c2',name:'ربع الفنطاس',tag:'فنطاس',color:'#2a8a6a',lvl:5,members:24,pts:2980},
   {id:'c3',name:'أهل الدامة',tag:'دامة',color:'#e2b04a',lvl:9,members:45,pts:5120},{id:'c4',name:'كشّاتة الديرة',tag:'كش',color:'#2b3f7a',lvl:4,members:19,pts:1870},
   {id:'c5',name:'دواوين المباركية',tag:'مبرك',color:'#8a5a33',lvl:6,members:31,pts:3350},{id:'c6',name:'بحارة الفريج',tag:'بحر',color:'#1f6f7a',lvl:3,members:15,pts:1240}];
 const CLAN_COLORS=['#c0392b','#2a8a6a','#e2b04a','#2b3f7a','#8a5a33','#7a1f5a'];
-function clanEmblem(c,sz){sz=sz||48;return '<span class="v7em" style="width:'+sz+'px;height:'+sz+'px;background:'+c.color+';font-size:'+Math.round(sz*.3)+'px">'+esc(c.tag)+'</span>'}
+function clanEmblem(c,sz){sz=sz||48;const color=/^#[0-9a-f]{6}$/i.test(c.color||'')?c.color:'#c0392b';return '<span class="v7em" style="width:'+sz+'px;height:'+sz+'px;background:'+color+';font-size:'+Math.round(sz*.3)+'px">'+esc(c.tag)+'</span>'}
 function clanMembers(){const c=S.clan;const R=rng(c.id.length*97+(c.name.length*13));return c.members.map((id,i)=>({p:pById(id),role:i<2?'نائب':'عضو',pts:Math.floor(R()*180)})).filter(m=>m.p)}
 let clanTab=PANEL.tab='mine';
-function openClan(tab){clanTab=tab||(S.clan?'mine':'find');openPanel('clan','الدواوين',S.clan?[['mine','ديوانيتي'],['rank','الترتيب']]:[['find','استكشف'],['make','أسّس ديوانية'],['rank','الترتيب']],clanTab,(B,t)=>{clanTab=t;const c=S.clan;
-  if(t==='find'){B.innerHTML='<div class="note" style="margin-bottom:8px">الديوانية = فريقك الدائم: دردشة خاصة، ونقاط أسبوعية، وترتيب بين الدواوين.</div>'+CLANS.map(k=>'<div class="srow">'+clanEmblem(k,42)+'<div class="grow"><b>'+k.name+'</b><small>المستوى '+k.lvl+' · '+k.members+' عضو · '+k.pts+' نقطة هالأسبوع</small></div><button class="sbtn pri" data-a="do" data-k="join" data-v="'+k.id+'">انضم</button></div>').join('')}
+function openClan(tab){clanWeek();clanTab=tab||(S.clan?'mine':'find');openPanel('clan','الدواوين',S.clan?[['mine','ديوانيتي'],['rank','الترتيب']]:[['find','استكشف'],['make','أسّس ديوانية'],['rank','الترتيب']],clanTab,(B,t)=>{clanTab=t;const c=S.clan;
+  if(t==='find'){B.innerHTML='<div class="note" style="margin-bottom:8px">الديوانية = فريقك الدائم: دردشة خاصة، ونقاط أسبوعية، وترتيب بين الدواوين.</div>'+CLANS.map(k=>'<div class="srow">'+clanEmblem(k,42)+'<div class="grow"><b>'+esc(k.name)+'</b><small>المستوى '+k.lvl+' · '+k.members+' عضو · '+k.pts+' نقطة هالأسبوع</small></div><button class="sbtn pri" data-a="do" data-k="join" data-v="'+k.id+'">انضم</button></div>').join('')}
   else if(t==='make'){const sel=PANEL.cc||CLAN_COLORS[0];B.innerHTML='<div class="ssec">اسم الديوانية</div><div class="ssearch"><input id="clN" maxlength="20" placeholder="مثلاً: ديوانية الربع"></div><div class="ssec">الرمز (لين 4 أحرف)</div><div class="ssearch"><input id="clT" maxlength="4" placeholder="ربع"></div><div class="ssec">اللون</div><div class="chips">'+CLAN_COLORS.map(x=>'<button class="chip'+(x===sel?' on':'')+'" data-a="do" data-k="cc" data-v="'+x+'"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:'+x+'"></span></button>').join('')+'</div><button class="pbtn" data-a="do" data-k="make" style="margin-top:12px">'+ic('castle')+'أسّس الديوانية · 300 عملة</button>'}
   else if(t==='rank'){const all=CLANS.map(k=>Object.assign({},k));if(c)all.push({id:c.id,name:c.name,tag:c.tag,color:c.color,lvl:c.lvl,members:c.members.length+1,pts:c.pts,mine:true});all.sort((a,b)=>b.pts-a.pts);
-    B.innerHTML=all.map((k,i)=>'<div class="srow"'+(k.mine?' style="background:rgba(255,210,126,.1)"':'')+'><b style="width:26px;text-align:center;color:'+(i<3?'#ffd27e':'var(--muted)')+'">'+(i+1)+'</b>'+clanEmblem(k,36)+'<div class="grow"><b>'+k.name+(k.mine?' (ديوانيتك)':'')+'</b><small>المستوى '+k.lvl+' · '+k.members+' عضو</small></div><b style="color:var(--brass-hi)">'+k.pts+'</b></div>').join('')+'<div class="note">الترتيب أسبوعي · كل فوز +10 نقاط، خسارة +3، تعادل +5</div>'}
+    B.innerHTML=all.map((k,i)=>'<div class="srow"'+(k.mine?' style="background:rgba(255,210,126,.1)"':'')+'><b style="width:26px;text-align:center;color:'+(i<3?'#ffd27e':'var(--muted)')+'">'+(i+1)+'</b>'+clanEmblem(k,36)+'<div class="grow"><b>'+esc(k.name)+(k.mine?' (ديوانيتك)':'')+'</b><small>المستوى '+k.lvl+' · '+k.members+' عضو</small></div><b style="color:var(--brass-hi)">'+k.pts+'</b></div>').join('')+'<div class="note">الترتيب أسبوعي · كل فوز +10 نقاط، خسارة +3، تعادل +5</div>'}
   else{const mem=clanMembers();const goal=500,prog=Math.min(goal,c.pts);
     B.innerHTML='<div class="v7ph">'+clanEmblem(c,56)+'<div style="flex:1"><b>'+esc(c.name)+'</b><small> · المستوى '+c.lvl+' · '+(mem.length+1)+' عضو · دورك: '+c.role+'</small><div class="v7bar"><i style="width:'+prog/goal*100+'%"></i></div><small>هدف الأسبوع: '+prog+' / '+goal+' نقطة · مساهمتك '+(c.myPts||0)+'</small></div>'+
       (prog>=goal&&!c.goalDone?'<button class="sbtn pri" data-a="do" data-k="goal">استلم جائزة الهدف</button>':'')+'<button class="sbtn pri" data-a="do" data-k="chat">'+ic('chat')+'دردشة الديوانية</button></div>'+
@@ -3270,26 +3289,26 @@ function openClan(tab){clanTab=tab||(S.clan?'mine':'find');openPanel('clan','ا�
       mem.map(m=>'<div class="srow">'+avatarHTML(m.p)+'<div class="grow"><b>'+esc(m.p.name)+'</b><small>'+m.role+' · '+presText(presOf(m.p.id))+'</small></div><b style="color:var(--brass-hi)">'+m.pts+'</b></div>').join('')+
       '<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="sbtn" data-a="do" data-k="invite">'+ic('plus')+'ادعُ صديق للديوانية</button><button class="sbtn no" data-a="do" data-k="leave">'+(c.confirmLeave?'متأكد؟ اضغط مرة ثانية':'مغادرة الديوانية')+'</button></div>'+
       (PANEL.inv?'<div class="ssec">أصدقاؤك</div>'+socState().friends.filter(id=>!c.members.includes(id)).map(pById).filter(Boolean).map(p=>'<div class="srow">'+avatarHTML(p)+'<div class="grow"><b>'+esc(p.name)+'</b></div><button class="sbtn pri" data-a="do" data-k="add" data-v="'+p.id+'">أضف</button></div>').join(''):'')}},
-  (k,v)=>{if(k==='join'){const k0=CLANS.find(x=>x.id===v);const ids=PLAYERS.slice().sort(()=>Math.random()-.5).slice(0,Math.min(12,k0.members-1)).map(p=>p.id);S.clan={id:k0.id,name:k0.name,tag:k0.tag,color:k0.color,lvl:k0.lvl,pts:k0.pts,myPts:0,role:'عضو',members:ids};
+  (k,v)=>{if(k==='join'){const k0=CLANS.find(x=>x.id===v);const ids=PLAYERS.slice().sort(()=>Math.random()-.5).slice(0,Math.min(12,k0.members-1)).map(p=>p.id);S.clan={id:k0.id,name:k0.name,tag:k0.tag,color:k0.color,lvl:k0.lvl,pts:0,myPts:0,role:'عضو',members:ids};
       clanTab=PANEL.tab='mine';PANEL.tabs=[['mine','ديوانيتي'],['rank','الترتيب']];toast('انضميت لـ'+k0.name,1800);SFX.win&&SFX.win();setTimeout(()=>chPush('clan',{fromName:pById(ids[0])?pById(ids[0]).name:'عضو',text:'يا هلا ومرحبا بـ'+S.name+' 👋',t:Date.now()}),1500)}
     else if(k==='cc')PANEL.cc=v;
-    else if(k==='make'){const n=cleanText(($('#clN').value||'').trim()),tg=cleanText(($('#clT').value||'').trim());if(n.length<3||!tg){toast('اكتب اسم (3 أحرف أو أكثر) ورمز',1800);return false}if(S.coins<300){toast('تحتاج 300 عملة',1600);return false}
-      S.coins-=300;updateProfile();S.clan={id:'my'+Date.now(),name:n,tag:tg.slice(0,4),color:PANEL.cc||CLAN_COLORS[0],lvl:1,pts:0,myPts:0,role:'المؤسس',members:[]};clanTab=PANEL.tab='mine';PANEL.tabs=[['mine','ديوانيتي'],['rank','الترتيب']];toast('تأسست ديوانية '+n+' 🎉',2000);SFX.win&&SFX.win()}
+    else if(k==='make'){const n=cleanText(($('#clN').value||'').trim()),tg=cleanText(($('#clT').value||'').trim());if(n.length<3||n.length>20||!tg||tg.length>4){toast('اكتب اسم (3 أحرف أو أكثر) ورمز',1800);return false}if(S.coins<300){toast('تحتاج 300 عملة',1600);return false}
+      S.coins-=300;updateProfile();S.clan={id:'my'+Date.now(),name:n,tag:tg.slice(0,4),color:CLAN_COLORS.includes(PANEL.cc)?PANEL.cc:CLAN_COLORS[0],lvl:1,pts:0,myPts:0,role:'المؤسس',members:[]};clanTab=PANEL.tab='mine';PANEL.tabs=[['mine','ديوانيتي'],['rank','الترتيب']];toast('تأسست ديوانية '+n+' 🎉',2000);SFX.win&&SFX.win()}
     else if(k==='chat'){closeLayer();openChat('clan');return false}else if(k==='invite')PANEL.inv=!PANEL.inv;
     else if(k==='add'){S.clan.members.push(v);toast(pById(v).name+' انضم للديوانية',1500)}
-    else if(k==='goal'){S.clan.goalDone=true;addCoins(200);toast('جائزة هدف الأسبوع: 200 عملة',1800)}
-    else if(k==='leave'){if(!S.clan.confirmLeave){S.clan.confirmLeave=true;setTimeout(()=>{if(S.clan)S.clan.confirmLeave=false},4000)}else{toast('غادرت '+S.clan.name,1500);S.clan=null;clanTab=PANEL.tab='find';PANEL.tabs=[['find','استكشف'],['make','أسّس ديوانية'],['rank','الترتيب']];delete CHAT.ch.clan}}
-    persist();if(LOBBY.on)lbTagsPos();return true})}
+    else if(k==='goal'){clanClaim()}
+    else if(k==='leave'){if(!S.clan.confirmLeave){S.clan.confirmLeave=true;setTimeout(()=>{if(S.clan)S.clan.confirmLeave=false},4000)}else{clanWeekSave();toast('غادرت '+S.clan.name,1500);S.clan=null;clanTab=PANEL.tab='find';PANEL.tabs=[['find','استكشف'],['make','أسّس ديوانية'],['rank','الترتيب']];delete CHAT.ch.clan}}
+    clanWeek();clanWeekSave();persist();if(LOBBY.on)lbTagsPos();return true})}
 
 /* ---------- نهاية المباراة: كل الربط ---------- */
 const _onMatchEnd7=onMatchEnd;
 onMatchEnd=function(res){const g=game;let html=_onMatchEnd7(res);let ex=[];
   try{saveReplay(res)}catch(e){}
   const sm=streakOnEnd(res);if(sm)ex.push(sm);
-  if(S.clan){const p=res>0?10:res<0?3:5;S.clan.myPts=(S.clan.myPts||0)+p;S.clan.pts+=p;ex.push('+'+p+' نقطة لديوانية '+S.clan.name)}
+  clanWeek();if(S.clan){const p=res>0?10:res<0?3:5;S.clan.myPts=(S.clan.myPts||0)+p;S.clan.pts+=p;ex.push('+'+p+' نقطة لديوانية '+S.clan.name);clanWeekSave()}
   let btn='';const tg=g&&g.npc&&g.npc.vsTag;if(tg){delete g.npc.vsTag;if(tg==='tour'){ex.push(tourResult(res));btn='<button class="pbtn" onclick="tourContinue()">'+ic('trophy')+'متابعة البطولة</button>'}else if(tg==='room')ex.push('مباراة الغرفة الخاصة انتهت')}
   persist();
-  return html+(ex.length?'<div class="v7ex">'+ex.join(' · ')+'</div>':'')+'<div class="row" style="margin-top:6px">'+btn+'<button class="gbtn" onclick="v7ReplayFromMatch()">'+ic('replay')+'الإعادة والتحليل</button></div>'};
+  return html+(ex.length?'<div class="v7ex">'+ex.map(esc).join(' · ')+'</div>':'')+'<div class="row" style="margin-top:6px">'+btn+'<button class="gbtn" onclick="v7ReplayFromMatch()">'+ic('replay')+'الإعادة والتحليل</button></div>'};
 
 (function(){const st=document.createElement('style');st.textContent=`
 .v7ex{margin-top:6px;padding:5px 8px;font-size:11.5px;line-height:1.5;color:var(--sand);background:rgba(255,255,255,.06)}
@@ -3623,7 +3642,7 @@ lbBuildUI=function(){let el=$('#lobby');if(!el){el=document.createElement('div')
     <span class="ln"><em style="background:${tr[2]}">${tr[1]}</em>المستوى ${lv}<span class="xp"><i style="width:${xp}%"></i></span></span></span></button>
   <div class="lb2-top">
     <button class="lb2-coin pe" id="lbCoins">${gi('coin')}<span>${S.coins.toLocaleString('en')}</span><i>${ic('plus')}</i></button>
-    ${S.streak>0?'<span class="lb2-streak">'+ic('flame')+S.streak+'</span>':''}
+    ${S.winStreak>0?'<span class="lb2-streak">'+ic('flame')+S.winStreak+'</span>':''}
     <button class="lb2-ic im pe" id="lbChest" aria-label="الصندوق اليومي">${gi('chest')}${dot(chestReady())}</button>
     <button class="lb2-ic im pe" data-o="trip:quests" aria-label="المهام">${gi('quests')}${dot(tasks)}</button>
     <button class="lb2-ic im pe" id="lbMail" aria-label="البريد والمكافأة اليومية">${gi('mail')}${dot(!S.loginClaimed)}</button>
@@ -4435,7 +4454,7 @@ function shake(a,d){M22.shake={a,t:0,d}}
     else if(e.k==='ring'){e.me.scale.setScalar(.01+e.max*Math.sqrt(k));e.me.material.opacity=1-k}
     else if(e.k==='pil'){e.me.material.opacity=Math.sin(Math.min(1,k)*Math.PI)*.75;e.me.scale.set(1+k*.6,1,1+k*.6);e.me.rotation.y+=dt*3}
     else if(e.k==='spin'){e.m.rotation.y+=dt*14;e.m.rotation.z=Math.sin(k*Math.PI)*.9}
-    if(k>=1){if(e.pts){scene.remove(e.pts);e.pts.geometry.dispose()}if(e.me){scene.remove(e.me);e.me.geometry.dispose()}if(e.k==='spin')e.m.rotation.set(0,0,0);FX22.splice(i,1)}}
+    if(k>=1){if(e.pts){scene.remove(e.pts);e.pts.geometry.dispose();e.pts.material.dispose()}if(e.me){scene.remove(e.me);e.me.geometry.dispose();e.me.material.dispose()}if(e.k==='spin')e.m.rotation.set(0,0,0);FX22.splice(i,1)}}
   const sh=M22.shake;if(M22.off){camera.position.sub(M22.off);M22.off=null}if(sh&&mode==='match'){sh.t+=dt;if(sh.t<sh.d){const a=sh.a*(1-sh.t/sh.d);M22.off=new THREE.Vector3((Math.random()-.5)*a,0,(Math.random()-.5)*a);camera.position.add(M22.off)}else M22.shake=null}};requestAnimationFrame(f)})();
 const _capturePiece22=capturePiece;
 capturePiece=function(r,c,by){const m=game&&game.meshes[r*8+c];const p=m?m.position.clone():null;_capturePiece22.apply(this,arguments);
@@ -4527,7 +4546,7 @@ updateAmbience=function(dt){_updateAmbience24.apply(this,arguments);if(!AC||!AMB
 
 /* ================= v25: أونلاين حقيقي — تسجيل دخول + غرفة بكود + نقلات مباشرة (Firebase) ================= */
 const FB_CFG=window.DAMA_AUTH?window.DAMA_AUTH.config:{apiKey:"AIzaSyAHsUMKUr1dDgUXFUCk1SNj0hpwuoKNw8A",authDomain:"dama-world.firebaseapp.com",projectId:"dama-world",storageBucket:"dama-world.firebasestorage.app",messagingSenderId:"751728629330",appId:"1:751728629330:web:3f0e015059b1e646a6b18b"};
-const ONL={ready:null,auth:null,db:null,user:null,room:null,code:null,role:null,unsub:null,seq:0,started:false,npc:null,oppName:''};
+const ONL={ready:null,auth:null,db:null,user:null,room:null,code:null,role:null,unsub:null,seq:0,started:false,npc:null,oppName:'',pending:null,sending:null,chatSeen:new Set(),epoch:0,hb:0,creating:false,joining:false,finishing:false};
 const ONL_SDK='https://cdn.jsdelivr.net/npm/firebase@10.12.2/';
 function onlLoadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('sdk'));document.head.appendChild(s)})}
 /* تحميل Firebase + دخول كضيف تلقائياً */
@@ -4541,7 +4560,6 @@ function onlInit(){if(window.DAMA_AUTH&&window.DAMA_AUTH.guest)return Promise.re
     if(!ONL.auth.currentUser){if(window.DAMA_AUTH)throw{code:'session'};await ONL.auth.signInAnonymously()}
     if(window.DAMA_AUTH&&ONL.auth.currentUser.isAnonymous)throw{code:'session'};
     ONL.user=ONL.auth.currentUser;
-    if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)try{await ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name||'لاعب',lvl:(S.lvl||S.level||1),seen:Date.now()},{merge:true})}catch(e){}
     return ONL.user})().catch(e=>{ONL.ready=null;throw e})}
 function onlErr(e){const net=/network|sdk|unavailable|failed/i.test((e&&(e.code||e.message))||'');
   return net?'ما قدرنا نتصل بالسيرفر. الأونلاين يشتغل من رابط اللعبة الخاص (مو من صفحة Claude).':'صار خطأ: '+((e&&(e.code||e.message))||'')}
@@ -4569,78 +4587,148 @@ async function onlMenu(){if(!requirePlayAccount())return;if(mode!=='explore'){to
   try{await onlInit()}catch(e){onlDlg('<h3>الأونلاين غير متاح هنا</h3><p class="muted">'+esc(onlErr(e))+'</p><div class="row"><button class="pbtn" data-a="x">تمام</button></div>',{x:()=>closeLayer()});return}
   const g=ONL.user&&!ONL.user.isAnonymous;
   onlDlg('<span class="tag">العب مع ربعك</span><h3>دامة أونلاين</h3><p class="muted">سوّ غرفة وأرسل الكود لربعك، أو ادخل بكود وصلك.</p>'+
-    '<div class="row"><button class="pbtn" data-a="host">'+ic('board')+'سوّ غرفة</button><button class="gbtn" data-a="join">'+ic('crowd')+'ادخل بكود</button></div>'+
-    '<p class="muted" style="margin-top:10px">'+(g?'✅ حسابك محفوظ بـ Google':'<button class="gbtn" data-a="google" style="font-size:13px">احفظ حسابي بـ Google</button>')+'</p>',
-    {host:()=>onlHost(),join:()=>onlJoinDlg(),google:()=>onlGoogle()})}
+    (onlStored()?'<button class="pbtn" data-a="resume">استرجاع المباراة السابقة</button>':'')+'<div class="row"><button class="pbtn" data-a="host">'+ic('board')+'سوّ غرفة</button><button class="gbtn" data-a="join">'+ic('crowd')+'ادخل بكود</button></div>'+
+    '<p class="muted" style="margin-top:10px">'+(g?'✅ مسجّل بحسابك':'<button class="gbtn" data-a="google" style="font-size:13px">احفظ حسابي بـ Google</button>')+'</p>',
+    {resume:()=>onlResume(),host:()=>onlHost(),join:()=>onlJoinDlg(),google:()=>onlGoogle()})}
 async function onlGoogle(){try{const p=new firebase.auth.GoogleAuthProvider();
     try{await ONL.auth.currentUser.linkWithPopup(p)}catch(e){if(e.code==='auth/credential-already-in-use'&&e.credential)await ONL.auth.signInWithCredential(e.credential);else if(/popup/.test(e.code||''))await ONL.auth.currentUser.linkWithRedirect(p);else throw e}
     ONL.user=ONL.auth.currentUser;toast('تم ربط حسابك بـ Google ✅');onlMenu()}catch(e){toast(onlErr(e))}}
 
 /* ---------- سوّ غرفة ---------- */
-async function onlHost(){if(!requirePlayAccount())return;let code,ref;
-  try{for(let i=0;i<5;i++){code=onlCode();ref=ONL.db.collection('rooms').doc(code);const d=await ref.get();if(!d.exists)break}
-    await ref.set({code,host:ONL.user.uid,hostName:S.name||'لاعب',hostPhoto:S.avatarImg||null,guest:null,guestName:'',state:'wait',moves:[],resigned:null,created:Date.now()})}
-  catch(e){toast(onlErr(e));return}
+async function onlHost(){if(!requirePlayAccount())return;if(ONL.creating)return;ONL.creating=true;let code,ref;
+  try{const profile=await ONL.db.collection('users').doc(ONL.user.uid).get({source:'server'});const rating=+(profile.exists&&profile.data().rating)||1000;
+    let created=false;for(let i=0;i<5&&!created;i++){code=onlCode();ref=ONL.db.collection('rooms').doc(code);
+      created=await ONL.db.runTransaction(async tx=>{const d=await tx.get(ref);if(d.exists)return false;
+        tx.set(ref,{code,protocol:2,matchId:ONL.user.uid+'-'+Date.now()+'-'+Math.random().toString(36).slice(2),host:ONL.user.uid,hostName:S.name||'لاعب',hostPhoto:S.avatarImg||null,hostRating:rating,guest:null,guestName:'',state:'wait',moves:[],messages:[],voiceEpoch:1,resigned:null,created:Date.now()});return true})}
+    if(!created){toast('كل الرموز اللي جربناها مستخدمة؛ حاول مرة ثانية');return}
+  }catch(e){toast(onlErr(e));return}finally{ONL.creating=false}
   ONL.code=code;ONL.role='host';ONL.seq=0;ONL.started=false;onlListen(ref);
   const msg='تعال نلعب دامة بـ عالم الدامة! كود الغرفة: '+code+'\n'+location.href.split('#')[0]+'#join='+code;
   onlDlg('<span class="tag">غرفتك جاهزة</span><h3>أرسل الكود لربعك</h3><div class="code">'+code+'</div><p class="muted"><span class="spin"></span>ننطر ربعك يدخل…</p>'+
     '<div class="row"><a class="pbtn" href="https://wa.me/?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">إرسال بالواتساب</a><button class="gbtn" data-a="copy">نسخ الكود</button><button class="gbtn danger" data-a="cancel">إلغاء</button></div>',
     {copy:()=>{try{navigator.clipboard.writeText(code);toast('انسخ الكود ✅')}catch(e){}},cancel:()=>{onlClose(true);closeLayer()}},()=>{if(!ONL.started)onlClose(true)})}
 /* ---------- ادخل بكود ---------- */
-function onlJoinDlg(pref){if(!requirePlayAccount())return;onlDlg('<span class="tag">ادخل غرفة ربعك</span><h3>اكتب الكود</h3><input class="cin" id="onlC" maxlength="4" autocomplete="off" autocapitalize="characters" value="'+(pref||'')+'"><div class="err" id="onlE"></div><div class="row"><button class="pbtn" data-a="go">دخول</button><button class="gbtn" data-a="x">رجوع</button></div>',
+function onlJoinDlg(pref){if(!requirePlayAccount())return;onlDlg('<span class="tag">ادخل غرفة ربعك</span><h3>اكتب الكود</h3><input class="cin" id="onlC" maxlength="4" autocomplete="off" autocapitalize="characters" value="'+esc(pref||'')+'"><div class="err" id="onlE"></div><div class="row"><button class="pbtn" data-a="go">دخول</button><button class="gbtn" data-a="x">رجوع</button></div>',
   {go:()=>onlJoin(($('#onlC').value||'').trim().toUpperCase()),x:()=>onlMenu()});setTimeout(()=>{const i=$('#onlC');i&&i.focus()},50)}
-async function onlJoin(code){if(!requirePlayAccount())return;const E=$('#onlE');if(code.length!==4){E&&(E.textContent='الكود 4 حروف');return}
-  try{const ref=ONL.db.collection('rooms').doc(code),d=await ref.get();
-    if(!d.exists){E&&(E.textContent='ما لقينا غرفة بهالكود');return}const r=d.data();
-    if(r.host===ONL.user.uid){E&&(E.textContent='هذي غرفتك أنت');return}
-    if(r.guest&&r.guest!==ONL.user.uid){E&&(E.textContent='الغرفة ممتلئة');return}
-    await ref.update({guest:ONL.user.uid,guestName:S.name||'لاعب',guestPhoto:S.avatarImg||null,state:'play'});
-    ONL.code=code;ONL.role='guest';ONL.seq=0;ONL.started=false;closeLayer();onlListen(ref)}
-  catch(e){E&&(E.textContent=onlErr(e))}}
-function onlListen(ref){if(ONL.unsub)ONL.unsub();ONL.ref=ref;
-  ONL.unsub=ref.onSnapshot(s=>{if(!s.exists){if(ONL.started&&game&&game.online&&!game.over)endGame(1,'خصمك طلع من المباراة');onlClose(false);return}
-    const r=ONL.room=s.data();
-    if(r.state==='play'&&!ONL.started&&r.host&&r.guest){ONL.started=true;ONL.oppName=ONL.role==='host'?r.guestName:r.hostName;closeLayer();onlStart()}
-    if(game&&game.online&&!game.over){if(r.resigned&&r.resigned!==ONL.user.uid){endGame(1,ONL.oppName+' استسلم');return}onlPump()}},e=>toast(onlErr(e)))}
-function onlClose(del){if(ONL.unsub){ONL.unsub();ONL.unsub=null}
-  if(del&&ONL.ref&&ONL.role==='host')ONL.ref.delete().catch(()=>{});
+async function onlJoin(code){if(!requirePlayAccount())return;const E=$('#onlE');if(!/^[A-Z0-9]{4}$/.test(code||'')){if(E)E.textContent='الكود 4 حروف أو أرقام';return}if(ONL.joining)return;ONL.joining=true;
+  try{const ref=ONL.db.collection('rooms').doc(code),uid=ONL.user.uid;
+    const profile=await ONL.db.collection('users').doc(uid).get({source:'server'}),rating=+(profile.exists&&profile.data().rating)||1000;
+    await ONL.db.runTransaction(async tx=>{const d=await tx.get(ref);if(!d.exists)throw Error('ما لقينا الغرفة');const r=d.data();
+      if(r.protocol!==2||!r.matchId)throw Error('حدّثوا اللعبة وافتحوا غرفة جديدة');if(r.host===uid)throw Error('هذي غرفتك أنت');if(r.guest||r.state!=='wait')throw Error('الغرفة ممتلئة أو مقفولة');
+      tx.update(ref,{guest:uid,guestProtocol:2,guestName:S.name||'لاعب',guestPhoto:S.avatarImg||null,guestRating:rating,state:'play'})});
+    ONL.code=code;ONL.role='guest';ONL.seq=0;ONL.started=false;ONL.pending=null;closeLayer();onlListen(ref);
+  }catch(e){if($('#onlE')===E&&E)E.textContent=e.code?onlErr(e):e.message}finally{ONL.joining=false}}
+function onlRemember(r){if(!ONL.user||!r.matchId)return;try{localStorage.setItem('dama.room.'+ONL.user.uid,JSON.stringify({code:ONL.code,id:r.matchId}))}catch(e){}}
+function onlStored(){try{return JSON.parse(localStorage.getItem('dama.room.'+ONL.user.uid)||'null')}catch(e){return null}}
+function onlForget(){try{localStorage.removeItem('dama.room.'+ONL.user.uid)}catch(e){}}
+function onlDisconnected(message){if(!ONL.ref)return;const ref=ONL.ref;if(ONL.warned===message)return;ONL.warned=message;
+  if(game&&game.online)game.busy=true;
+  onlDlg('<h3>اتصال المباراة توقف</h3><p>'+esc(message)+'</p><button class="pbtn" data-a="retry">إعادة الاتصال</button><button class="gbtn" data-a="leave">مغادرة بدون مكافأة</button>',{
+    retry:()=>{if(ONL.ref!==ref)return;closeLayer();ONL.warned=null;onlReconnect()},leave:()=>{closeLayer();if(game&&game.online)leaveMatch();else onlClose(true)}})}
+async function onlBeat(){const ref=ONL.ref,role=ONL.role;if(!ref)return;try{await ref.update({[role+'Seen']:firebase.firestore.FieldValue.serverTimestamp()})}catch(e){if(ONL.ref===ref)onlDisconnected('تعذّر الاتصال؛ النقلة ما تنحسب إلا بعد وصولها للسيرفر')}
+  if(ONL.ref!==ref)return;const r=ONL.room,seen=r&&r[role==='host'?'guestSeen':'hostSeen'];const at=seen&&typeof seen.toMillis==='function'?seen.toMillis():+seen;
+  if(game&&game.online&&!game.over&&at&&Date.now()-at>90000)onlDisconnected('خصمك غير متصل. تقدر تنتظر رجعته أو تغادر بدون مكافأة')}
+function onlListen(ref){if(ONL.unsub)ONL.unsub();clearInterval(ONL.hb);ONL.ref=ref;const epoch=++ONL.epoch;ONL.chatSeen=new Set();ONL.warned=null;
+  ONL.unsub=ref.onSnapshot(snap=>{if(ONL.ref!==ref||ONL.epoch!==epoch)return;
+    if(!snap.exists){onlForget();onlDisconnected('الغرفة انقفلت؛ ما انحسب فوز أو خسارة');return}
+    const r=snap.data(),uid=ONL.user.uid;if(r.host!==uid&&r.guest!==uid){onlDisconnected('حسابك مو عضو في هالغرفة');return}
+    if(r.guest&&r.guestProtocol!==2){onlDisconnected('الطرف الثاني يحتاج يحدث اللعبة ويدخل غرفة جديدة');return}const old=ONL.room;ONL.room=r;ONL.role=r.host===uid?'host':'guest';onlRemember(r);
+    onlReceiveChat(r);
+    if(old&&old.voiceEpoch!==r.voiceEpoch){vcStop();if(game&&game.online&&!game.over)vcStart().catch(()=>{})}
+    if(r.state==='closed'){onlForget();onlDisconnected('الطرف الثاني غادر المباراة؛ ما انحسب فوز');return}
+    if((r.state==='play'||r.state==='done')&&!ONL.started&&r.host&&r.guest){ONL.started=true;ONL.oppName=ONL.role==='host'?r.guestName:r.hostName;closeLayer();onlStart().catch(e=>{ONL.started=false;onlDisconnected(onlErr(e))})}
+    if(game&&game.online&&!game.over){if(r.result){onlApplyResult(r.result);return}onlPump();vcSignal()}
+  },e=>{if(ONL.ref===ref&&ONL.epoch===epoch)onlDisconnected(onlErr(e))});
+  ONL.hb=setInterval(onlBeat,15000);onlBeat()}
+async function onlResume(){if(!requirePlayAccount())return;const saved=onlStored();if(!saved){toast('ما فيه مباراة محفوظة');return}
+  try{const ref=ONL.db.collection('rooms').doc(saved.code),snap=await ref.get({source:'server'});if(!snap.exists)throw Error('الغرفة انتهت');const r=snap.data();
+    if(r.matchId!==saved.id||![r.host,r.guest].includes(ONL.user.uid)||r.state==='closed')throw Error('الغرفة انتهت');
+    if(S.onlineResults&&S.onlineResults[r.matchId]){onlForget();toast('نتيجة هالمباراة محسوبة من قبل');return}
+    ONL.code=saved.code;ONL.role=r.host===ONL.user.uid?'host':'guest';ONL.started=false;ONL.pending=null;ONL.room=null;closeLayer();
+    if(r.state==='wait')onlDlg('<h3>غرفتك '+esc(saved.code)+'</h3><p>بانتظار الخصم</p><button class="gbtn" data-a="x">إلغاء الغرفة</button>',{x:()=>{onlClose(true);closeLayer()}});
+    await ref.update({voiceEpoch:(+r.voiceEpoch||0)+1,vOffer:null,vAnswer:null,hIce:[],gIce:[]});onlListen(ref);
+  }catch(e){toast(e.code?onlErr(e):e.message)}}
+async function onlReconnect(){if(!ONL.ref)return;const ref=ONL.ref;
+  try{const snap=await ref.get({source:'server'});if(ref!==ONL.ref)return;if(!snap.exists)throw Error('الغرفة انتهت');const r=snap.data();
+    if(![r.host,r.guest].includes(ONL.user.uid)||r.matchId!==ONL.room?.matchId)throw Error('الغرفة تغيرت');
+    ONL.room=r;ONL.pending=null;ONL.warned=null;if(game&&game.online){onlRebuild(r);if(r.result)onlApplyResult(r.result);else startTurn()}onlListen(ref);
+  }catch(e){onlDisconnected(e.code?onlErr(e):e.message)}}
+function onlClose(del){const ref=ONL.ref,uid=ONL.user&&ONL.user.uid;ONL.epoch++;if(ONL.unsub)ONL.unsub();ONL.unsub=null;clearInterval(ONL.hb);clearTimeout(ONL.voiceTimer);
+  if(del&&ref)ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)return;const r=snap.data();if(r.host!==uid&&r.guest!==uid)return;if(r.state==='wait'&&r.host===uid)tx.delete(ref);else if(r.state==='play')tx.update(ref,{state:'closed',closedBy:uid})}).catch(()=>{});
   if(ONL.npc){ONL.npc.name=ONL.npc._realName||ONL.npc.name;delete ONL.npc._realName;ONL.npc=null}
-  ONL.ref=null;ONL.room=null;ONL.code=null;ONL.role=null;ONL.started=false}
+  onlForget();ONL.ref=null;ONL.room=null;ONL.code=null;ONL.role=null;ONL.started=false;ONL.pending=null;ONL.sending=null;ONL.finishing=false}
 
 /* ---------- بداية المباراة: نستخدم شخصية قريبة كجسم لخصمك ---------- */
-async function onlStart(){if(!requirePlayAccount())return;if(mode!=='explore'){toast('ربعك دخل! ارجع للعالم المفتوح');return}
-  let best=null,bd=1e9;for(const n of npcs){if(n.blocked||n.state==='match')continue;const d=n.pos.distanceTo(player.pos);if(d<bd){bd=d;best=n}}
-  if(!best){toast('ما لقينا مكان للمباراة');return}
-  best._realName=best.name;best.name=ONL.oppName||'خصمك';ONL.npc=best;NEXT={quick:false};
-  toast('بدأت المباراة مع '+best.name+' 🎉');
-  await beginMatch(best);
-  if(game){game.online={code:ONL.code,role:ONL.role};game.turn=ONL.role==='host'?1:-1;game.diff=1}}
+async function onlStart(){if(!requirePlayAccount())return;if(mode!=='explore'){ONL.started=false;toast('ارجع للعالم المفتوح عشان تبدأ المباراة');return}
+  const ref=ONL.ref;let best=null,bd=1e9;for(const n of npcs){if(n.blocked||n.state==='match')continue;const d=n.pos.distanceTo(player.pos);if(d<bd){bd=d;best=n}}
+  if(!best){ONL.started=false;toast('ما لقينا مكان للمباراة');return}
+  best._realName=best.name;best.name=ONL.oppName||'خصمك';ONL.npc=best;NEXT={quick:false};await beginMatch(best);
+  if(ONL.ref!==ref||!game)return;game.online={code:ONL.code,role:ONL.role,id:ONL.room.matchId,opponentRating:ONL.role==='host'?ONL.room.guestRating:ONL.room.hostRating,selfRating:ONL.role==='host'?ONL.room.hostRating:ONL.room.guestRating};game.diff=1;
+  onlRebuild(ONL.room);if(ONL.room.result)onlApplyResult(ONL.room.result)}
+function onlBoard(r,uid){let board=initBoard(),noCap=0;const moves=r.moves||[],log=[];let capMe=0,capOpp=0;
+  for(let i=0;i<moves.length;i++){const e=moves[i];if(e.n!==i||e.by!==(i%2===0?r.host:r.guest))throw Error('ترتيب نقلات الغرفة غير صحيح');
+    const own=e.by===uid,side=own?1:-1,from=onlDec(e.from,!own)[0],steps=onlDec(e.steps,!own),caps=onlDec(e.caps,!own);
+    const legal=genMoves(board,side).find(m=>String(m.from)===String(from)&&String(m.steps)===String(steps)&&String(m.caps)===String(caps));if(!legal)throw Error('نقلة غير قانونية في الغرفة');
+    board=applyMove(board,legal,side);noCap=legal.caps.length?0:noCap+1;if(own)capMe+=legal.caps.length;else capOpp+=legal.caps.length;log.push({f:legal.from,s:legal.steps,c:legal.caps,side})}
+  return {board,noCap,plies:moves.length,capMe,capOpp,log,turn:(moves.length%2===0?r.host:r.guest)===uid?1:-1}}
+function onlRebuild(r){const state=onlBoard(r,ONL.user.uid);game.boardEpoch=(game.boardEpoch||0)+1;cleanupBoard();Object.assign(game,state,{sel:null,prefix:[],cand:[],busy:false,trayMe:state.capMe,trayOpp:state.capOpp});ONL.seq=state.plies;
+  for(let i=0;i<64;i++){const p=state.board[i];game.meshes[i]=null;if(!p)continue;const m=makePieceMesh(p>0?1:-1);m.position.copy(cellPos(i>>3,i&7));if(m.userData.crown)m.userData.crown.visible=Math.abs(p)===2;scene.add(m);game.meshes[i]=m}updCounts()}
 /* النقلة تنحفظ بالسيرفر */
-function onlSend(m){const e={n:ONL.seq,by:ONL.user.uid,from:onlEnc([m.from]),steps:onlEnc(m.steps),caps:onlEnc(m.caps)};ONL.seq++;
-  ONL.ref&&ONL.ref.update({moves:firebase.firestore.FieldValue.arrayUnion(e)}).catch(err=>toast(onlErr(err)))}
+async function onlSend(m){const ref=ONL.ref,uid=ONL.user.uid,seq=ONL.seq,matchId=ONL.room&&ONL.room.matchId;if(!ref)throw Error('الغرفة انقفلت');
+  const event={n:seq,by:uid,from:onlEnc([m.from]),steps:onlEnc(m.steps),caps:onlEnc(m.caps)};
+  await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('الغرفة انقفلت');const r=snap.data(),moves=r.moves||[],existing=moves[seq];
+    if(r.matchId!==matchId||![r.host,r.guest].includes(uid))throw Error('الغرفة تغيرت');
+    if(existing){if(['n','by','from','steps','caps'].every(k=>existing[k]===event[k]))return;throw Error('النقلة تغيرت؛ أعد الاتصال')}
+    if(r.state!=='play'||r.resigned||moves.length!==seq||(seq%2===0?r.host:r.guest)!==uid)throw Error('مو دورك أو المباراة انتهت');
+    const state=onlBoard(r,uid),legal=genMoves(state.board,1).some(x=>String(x.from)===String(m.from)&&String(x.steps)===String(m.steps)&&String(x.caps)===String(m.caps));if(!legal)throw Error('النقلة غير قانونية');
+    tx.update(ref,{moves:moves.concat(event)})});
+  if(ONL.ref!==ref)throw Error('الغرفة تغيرت');ONL.seq=seq+1}
+async function onlCommitMove(){if(ONL.sending||!ONL.pending)return;const pending=ONL.pending;if(!game||game.id!==pending.id)return;game.busy=true;setStatus('جارٍ تثبيت النقلة بالسيرفر…');const job=onlSend(pending.move);ONL.sending=job;
+  try{await job;if(ONL.pending!==pending||!game||game.id!==pending.id||game.over)return;ONL.pending=null;_finishMove25(pending.move,1);if(ONL.room&&ONL.room.result)onlApplyResult(ONL.room.result);else onlPump()}
+  catch(e){if(ONL.pending===pending&&game&&game.id===pending.id)onlDlg('<h3>النقلة ما تأكد حفظها</h3><p>اللوحة متوقفة إلى أن تتأكد النقلة. '+esc(e.code?onlErr(e):e.message)+'</p><button class="pbtn" data-a="retry">أعد الإرسال</button><button class="gbtn" data-a="reconnect">استرجع لوحة السيرفر</button>',{retry:()=>{closeLayer();onlCommitMove()},reconnect:()=>{closeLayer();onlReconnect()}})}
+  finally{if(ONL.sending===job)ONL.sending=null}}
+async function onlFinish(res,why){if(ONL.finishing||!ONL.ref||!game||game.over)return;ONL.finishing=true;game.busy=true;const ref=ONL.ref,id=game.id,uid=ONL.user.uid,matchId=game.online.id;
+  try{const result=await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('الغرفة انقفلت');const r=snap.data();if(![r.host,r.guest].includes(uid)||r.matchId!==matchId)throw Error('الغرفة تغيرت');if(r.result)return r.result;
+      if(r.state!=='play')throw Error('المباراة مغلقة');const st=onlBoard(r,r.host);let winner=null,reason=why;
+      if(why==='استسلمت'){winner=uid===r.host?r.guest:r.host;reason='استسلام'}
+      else if(!st.board.some(x=>x>0))winner=r.guest;
+      else if(!st.board.some(x=>x<0))winner=r.host;
+      else if(!genMoves(st.board,st.turn).length)winner=st.turn===1?r.guest:r.host;
+      else if(st.noCap<60)throw Error('المباراة للحين ما انتهت');
+      const result={winner,reason,plies:st.plies};tx.update(ref,{state:'done',result});return result});
+    if(ONL.ref===ref&&game&&game.id===id)onlApplyResult(result);
+  }catch(e){if(ONL.ref===ref)onlDisconnected(e.code?onlErr(e):e.message)}finally{ONL.finishing=false}}
+function onlApplyResult(result){if(!game||!game.online||game.over||ONL.pending)return;const id=game.online.id;S.onlineResults=S.onlineResults||{};
+  if(S.onlineResults[id]){game.over=true;game.busy=true;toast('نتيجة المباراة محسوبة من قبل');return}
+  if(ONL.room&&(ONL.room.moves||[]).length!==game.plies)onlRebuild(ONL.room);S.onlineResults[id]=result;onlForget();const res=result.winner==null?0:result.winner===ONL.user.uid?1:-1;saveBatch(()=>_endGame25(res,result.reason||'انتهت المباراة'))}
+async function onlChat(q){if(!game||!game.online||!ONL.ref||!Number.isInteger(q)||!QUICK[q])return;const ref=ONL.ref,uid=ONL.user.uid;
+  const message={id:uid+'-'+Date.now()+'-'+Math.random().toString(36).slice(2),by:uid,q,at:Date.now()};
+  try{await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('الغرفة انقفلت');const r=snap.data();if(![r.host,r.guest].includes(uid)||r.state!=='play')throw Error('المباراة انتهت');tx.update(ref,{messages:(r.messages||[]).concat(message).slice(-40)})});if(ONL.ref===ref)meSay(QUICK[q])}catch(e){toast('الرسالة ما وصلت؛ جرّب مرة ثانية')}}
+function onlReceiveChat(r){for(const m of r.messages||[]){if(!m||ONL.chatSeen.has(m.id))continue;ONL.chatSeen.add(m.id);if(m.by!==ONL.user.uid&&[r.host,r.guest].includes(m.by)&&Number.isInteger(m.q)&&QUICK[m.q]&&Date.now()-m.at<10000&&game&&game.online)oppSay(QUICK[m.q],2400)}}
+function saveBatch(action){const save=persist;let dirty=false;persist=()=>{dirty=true};try{return action()}finally{persist=save;if(dirty)save()}}
 /* نطبّق نقلات الخصم بالترتيب */
 let onlBusy=false;
-async function onlPump(){if(onlBusy||!game||!game.online||game.over||game.turn!==-1||!ONL.room)return;
+async function onlPump(){if(onlBusy||!game||!game.online||game.over||game.turn!==-1||!ONL.room||ONL.pending)return;
   const mv=(ONL.room.moves||[]).find(x=>x.n===ONL.seq);if(!mv)return;
-  if(mv.by===ONL.user.uid){ONL.seq++;return onlPump()}
+  if(mv.by===ONL.user.uid)return;
   onlBusy=true;try{
     const m={from:onlDec(mv.from,true)[0],steps:onlDec(mv.steps,true),caps:onlDec(mv.caps,true)};
     const legal=genMoves(game.board,-1).find(x=>x.from+''===m.from+''&&x.steps+''===m.steps+'');
-    if(!legal){toast('نقلة غير صحيحة من الخصم');return}
+    if(!legal){onlDisconnected('نقلة غير صحيحة من الخصم');return}
     ONL.seq++;await onlAnimate(legal)}finally{onlBusy=false}
   onlPump()}
-async function onlAnimate(m){const id=game.id;game.busy=true;let cur=m.from;
+async function onlAnimate(m){const id=game.id,epoch=game.boardEpoch||0;const current=()=>game&&game.id===id&&!game.over&&(game.boardEpoch||0)===epoch;game.busy=true;let cur=m.from;
   for(let k=0;k<m.steps.length;k++){const[r,c]=m.steps[k];const mesh=game.meshes[cur[0]*8+cur[1]];game.meshes[cur[0]*8+cur[1]]=null;game.meshes[r*8+c]=mesh;
-    if(k===0&&mesh){mesh.position.y=BOARDY+.02;await sleep(160)}if(mesh)await animPiece(mesh,cellPos(r,c),m.caps.length?.07:.035);if(!game||game.id!==id)return;SFX.move();
-    if(m.caps.length){capturePiece(m.caps[k][0],m.caps[k][1],-1);await sleep(150)}cur=[r,c]}
+    if(k===0&&mesh){mesh.position.y=BOARDY+.02;await sleep(160)}if(!current())return;if(mesh)await animPiece(mesh,cellPos(r,c),m.caps.length?.07:.035);if(!current())return;SFX.move();
+    if(m.caps.length){capturePiece(m.caps[k][0],m.caps[k][1],-1);await sleep(150);if(!current())return}cur=[r,c]}
   game.npc.ch.userData.action='sit';finishMove(m,-1)}
 
 /* ---------- ربط محرك اللعبة ---------- */
 const _aiTurn25=aiTurn;aiTurn=function(){if(game&&game.online){game.busy=true;game.npc.ch.userData.action='think';setStatus('دور '+game.npc.name+'…');onlPump();return}return _aiTurn25.apply(this,arguments)};
-const _finishMove25=finishMove;finishMove=function(m,side){if(game&&game.online&&side===1)onlSend(m);return _finishMove25.apply(this,arguments)};
-const _endGame25=endGame;endGame=function(res,why){if(game&&game.online&&!game.over&&res<0&&why==='استسلمت'&&ONL.ref)ONL.ref.update({resigned:ONL.user.uid}).catch(()=>{});return _endGame25.apply(this,arguments)};
+const _finishMove25=finishMove;finishMove=function(m,side){if(game&&game.online&&side===1){if(ONL.pending)return;ONL.pending={id:game.id,move:m};return onlCommitMove()}return _finishMove25.apply(this,arguments)};
+const _endGame25=endGame;endGame=function(res,why){if(game&&game.online&&!game.over)return onlFinish(res,why);return _endGame25.apply(this,arguments)};
 const _rematch25=rematch;rematch=function(){if(game&&game.online){toast('للعب مرة ثانية سوّ غرفة جديدة');return leaveMatch()}return _rematch25.apply(this,arguments)};
-const _leaveMatch25=leaveMatch;leaveMatch=async function(){const wasOnline=game&&game.online;const r=await _leaveMatch25.apply(this,arguments);if(wasOnline)onlClose(ONL.role==='host');return r};
+const _leaveMatch25=leaveMatch;leaveMatch=async function(){const wasOnline=game&&game.online;const r=await _leaveMatch25.apply(this,arguments);if(wasOnline)onlClose(true);return r};
 /* رابط دعوة فيه الكود: #join=ABCD */
 (function(){const m=/[#&]join=([A-Z0-9]{4})/i.exec(location.hash);if(!m)return;const code=m[1].toUpperCase();
   const t=setInterval(()=>{if(typeof mode!=='undefined'&&mode==='explore'){clearInterval(t);onlInit().then(()=>onlJoinDlg(code)).catch(e=>toast(onlErr(e)))}},1000)})();
@@ -4652,7 +4740,7 @@ const _loop26=loop;
 loop=function(ts){const now=ts||performance.now();
   let fps=PERF.mobile?30:60;
   if(mode==='match'&&game&&!tween&&!anims.length&&!game.busy){PERF.idleT+=now-PERF.last;if(PERF.idleT>1500)fps=15}else PERF.idleT=0;
-  if(document.hidden){requestAnimationFrame(loop);PERF.last=now;return}
+  if(document.hidden||window.DAMA_CONTEXT_LOST){requestAnimationFrame(loop);PERF.last=now;return}
   if(now-PERF.last<1000/fps-2){requestAnimationFrame(loop);return}
   PERF.last=now;return _loop26.apply(this,arguments)};
 /* دقة الشاشة والظلال أخف على الجوال */
@@ -4668,36 +4756,42 @@ if(PERF.mobile&&!S.perfInit){S.perfInit=1;if(S.settings.quality==='high'){S.sett
 /* ================= v27: صوت حقيقي بين اللاعبين بالمباراة الأونلاين (WebRTC) ================= */
 const VC={pc:null,local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,raf:0,needTap:false};
 const VC_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
-async function vcStart(){if(VC.pc||!ONL.ref||!game||!game.online)return;VC.role=ONL.role;
-  const pc=VC.pc=new RTCPeerConnection({iceServers:VC_ICE});
-  VC.audio=document.createElement('audio');VC.audio.autoplay=true;VC.audio.playsInline=true;VC.audio.setAttribute('playsinline','');document.body.appendChild(VC.audio);
-  pc.ontrack=e=>{VC.audio.srcObject=e.streams[0];VC.audio.muted=!S.settings.oppVoice;VC.audio.play().catch(()=>{VC.needTap=true;toast('اضغط على الشاشة عشان تسمع خصمك')});vcMeter(e.streams[0])};
-  pc.onicecandidate=e=>{if(!e.candidate||!ONL.ref)return;const f=VC.role==='host'?'hIce':'gIce';ONL.ref.update({[f]:firebase.firestore.FieldValue.arrayUnion(JSON.stringify(e.candidate.toJSON()))}).catch(()=>{})};
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected')toast('🎙️ الصوت متصل مع '+(ONL.oppName||'خصمك'));if(pc.connectionState==='failed')toast('ما قدرنا نوصل الصوت — الشبكة تمنعه')};
-  try{VC.local=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
-    VC.local.getAudioTracks().forEach(t=>{t.enabled=!!S.settings.matchVoice;pc.addTrack(t,VC.local)})}
-  catch(e){toast('المايك مقفول — تسمع خصمك بس');pc.addTransceiver('audio',{direction:'recvonly'})}
-  if(VC.role==='host'){const o=await pc.createOffer();await pc.setLocalDescription(o);ONL.ref.update({vOffer:o.sdp}).catch(()=>{})}
-  vcSignal()}
+async function vcPublish(data,pc,ref,epoch){if(VC.pc!==pc||ONL.ref!==ref)return;await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists||VC.pc!==pc||ONL.ref!==ref)return;const r=snap.data();if((+r.voiceEpoch||0)!==epoch||r.state!=='play')return;tx.update(ref,data)})}
+async function vcStart(){if(VC.pc||!ONL.ref||!game||!game.online||game.over)return;const ref=ONL.ref,epoch=+(ONL.room&&ONL.room.voiceEpoch)||0,role=ONL.role;
+  const pc=VC.pc=new RTCPeerConnection({iceServers:VC_ICE}),gen=VC.gen=(VC.gen||0)+1;VC.role=role;VC.epoch=epoch;VC.gotIce=0;
+  const current=()=>VC.pc===pc&&VC.gen===gen&&ONL.ref===ref&&(+ONL.room?.voiceEpoch||0)===epoch;
+  const out=VC.audio=document.createElement('audio');out.autoplay=true;out.playsInline=true;out.setAttribute('playsinline','');document.body.appendChild(out);
+  pc.ontrack=e=>{if(!current()){for(const t of e.streams[0]?.getTracks()||[])t.stop();return}out.srcObject=e.streams[0];out.muted=!S.settings.oppVoice;out.play().catch(()=>{if(current()){VC.needTap=true;toast('اضغط على الشاشة عشان تسمع خصمك')}});vcMeter(e.streams[0])};
+  pc.onicecandidate=e=>{if(!e.candidate||!current())return;vcPublish({[role==='host'?'hIce':'gIce']:firebase.firestore.FieldValue.arrayUnion(JSON.stringify(e.candidate.toJSON()))},pc,ref,epoch).catch(()=>{})};
+  pc.onconnectionstatechange=()=>{if(!current())return;if(pc.connectionState==='connected')toast('🎙️ الصوت متصل');if(pc.connectionState==='failed')toast('الصوت ما اتصل؛ تقدر تكمل بالرسائل السريعة')};
+  try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+    if(!current()){stream.getTracks().forEach(t=>t.stop());return}VC.local=stream;stream.getAudioTracks().forEach(t=>{t.enabled=!!S.settings.matchVoice&&!(typeof CTL!=='undefined'&&CTL.mute);pc.addTrack(t,stream)})}
+  catch(e){if(!current())return;toast('المايك مقفول — تسمع خصمك بس');pc.addTransceiver('audio',{direction:'recvonly'})}
+  if(!current())return;if(role==='host'){const o=await pc.createOffer();if(!current())return;await pc.setLocalDescription(o);if(!current())return;await vcPublish({vOffer:o.sdp},pc,ref,epoch)}
+  if(current())await vcSignal()}
 /* تبادل الإشارات من مستند الغرفة */
-async function vcSignal(){const pc=VC.pc,r=ONL.room;if(!pc||!r)return;
-  try{if(VC.role==='guest'&&r.vOffer&&!pc.remoteDescription){await pc.setRemoteDescription({type:'offer',sdp:r.vOffer});const a=await pc.createAnswer();await pc.setLocalDescription(a);ONL.ref.update({vAnswer:a.sdp}).catch(()=>{})}
-    if(VC.role==='host'&&r.vAnswer&&!pc.remoteDescription)await pc.setRemoteDescription({type:'answer',sdp:r.vAnswer});
-    const ice=(VC.role==='host'?r.gIce:r.hIce)||[];if(pc.remoteDescription)for(;VC.gotIce<ice.length;VC.gotIce++){try{await pc.addIceCandidate(JSON.parse(ice[VC.gotIce]))}catch(e){}}}
-  catch(e){console.warn('voice',e)}}
+async function vcSignal(){const pc=VC.pc,ref=ONL.ref,r=ONL.room,epoch=VC.epoch;if(!pc||!r||VC.signaling||(+r.voiceEpoch||0)!==epoch)return;VC.signaling=true;
+  const current=()=>VC.pc===pc&&ONL.ref===ref&&(+ONL.room?.voiceEpoch||0)===epoch;
+  try{if(VC.role==='guest'&&r.vOffer&&!pc.remoteDescription){await pc.setRemoteDescription({type:'offer',sdp:r.vOffer});if(!current())return;const a=await pc.createAnswer();if(!current())return;await pc.setLocalDescription(a);if(!current())return;await vcPublish({vAnswer:a.sdp},pc,ref,epoch)}
+    if(VC.role==='host'&&r.vAnswer&&!pc.remoteDescription){await pc.setRemoteDescription({type:'answer',sdp:r.vAnswer});if(!current())return}
+    const ice=(VC.role==='host'?r.gIce:r.hIce)||[];while(current()&&pc.remoteDescription&&VC.gotIce<ice.length){const i=VC.gotIce;try{await pc.addIceCandidate(JSON.parse(ice[i]))}catch(e){}if(!current())return;VC.gotIce=i+1}
+  }catch(e){if(current())console.warn('voice',e.code||e.message)}finally{if(VC.pc===pc){VC.signaling=false;if(current()&&ONL.room!==r)Promise.resolve().then(vcSignal)}}}
 /* مؤشر "يتحدث الآن" من مستوى صوت الخصم */
-function vcMeter(stream){try{const a=audio();if(!a)return;const src=a.createMediaStreamSource(stream),an=a.createAnalyser();an.fftSize=256;src.connect(an);VC.ana=an;const d=new Uint8Array(an.frequencyBinCount);
-  const f=()=>{if(!VC.pc){return}an.getByteFrequencyData(d);let s=0;for(let i=2;i<40;i++)s+=d[i];const on=S.settings.oppVoice&&s/38>28;const p=$('#oppP');p&&p.classList.toggle('talking',on);VC.raf=setTimeout(f,120)};f()}catch(e){}}
-function vcStop(){if(VC.local)VC.local.getTracks().forEach(t=>t.stop());if(VC.pc)try{VC.pc.close()}catch(e){}if(VC.audio){VC.audio.srcObject=null;VC.audio.remove()}clearTimeout(VC.raf);
-  Object.assign(VC,{pc:null,local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,needTap:false})}
+function vcMeter(stream){try{clearTimeout(VC.raf);if(VC.source)VC.source.disconnect();if(VC.ana)VC.ana.disconnect();const ctx=audio();if(!ctx)return;const pc=VC.pc,src=VC.source=ctx.createMediaStreamSource(stream),an=VC.ana=ctx.createAnalyser();an.fftSize=256;src.connect(an);const d=new Uint8Array(an.frequencyBinCount);
+  const f=()=>{if(VC.pc!==pc)return;an.getByteFrequencyData(d);let sum=0;for(let i=2;i<40;i++)sum+=d[i];const p=$('#oppP');if(p)p.classList.toggle('talking',S.settings.oppVoice&&sum/38>28);VC.raf=setTimeout(f,120)};f()}catch(e){}}
+function vcStop(){VC.gen=(VC.gen||0)+1;clearTimeout(ONL.voiceTimer);clearTimeout(VC.raf);const pc=VC.pc;VC.pc=null;
+  if(VC.local)VC.local.getTracks().forEach(t=>t.stop());if(pc){pc.ontrack=pc.onicecandidate=pc.onconnectionstatechange=null;try{pc.close()}catch(e){}}
+  if(VC.audio){const stream=VC.audio.srcObject;if(stream&&stream.getTracks)stream.getTracks().forEach(t=>t.stop());VC.audio.pause&&VC.audio.pause();VC.audio.srcObject=null;VC.audio.remove()}
+  for(const node of [VC.source,VC.ana])try{if(node)node.disconnect()}catch(e){}
+  const p=$('#oppP');if(p)p.classList.remove('talking');Object.assign(VC,{local:null,audio:null,sentIce:0,gotIce:0,role:null,ana:null,source:null,needTap:false,signaling:false})}
 document.addEventListener('pointerdown',()=>{if(VC.needTap&&VC.audio){VC.audio.play().then(()=>{VC.needTap=false}).catch(()=>{})}},true);
 /* أزرار المايك والسماعة تتحكم بالصوت الحقيقي بالأونلاين */
-const _mMic27=$('#mMic').onclick;$('#mMic').onclick=function(){if(game&&game.online){S.settings.matchVoice=!S.settings.matchVoice;persist();updMatchBtns();if(VC.local)VC.local.getAudioTracks().forEach(t=>t.enabled=S.settings.matchVoice);toast(S.settings.matchVoice?'🎙️ مايكك مفتوح — خصمك يسمعك':'أغلقت مايكك');return}return _mMic27.apply(this,arguments)};
+const _mMic27=$('#mMic').onclick;$('#mMic').onclick=function(){if(game&&game.online){S.settings.matchVoice=!S.settings.matchVoice;persist();updMatchBtns();if(VC.local)VC.local.getAudioTracks().forEach(t=>t.enabled=S.settings.matchVoice&&!CTL.mute);toast(S.settings.matchVoice?'🎙️ مايكك مفتوح — خصمك يسمعك':'أغلقت مايكك');return}return _mMic27.apply(this,arguments)};
 const _mMute27=$('#mMute').onclick;$('#mMute').onclick=function(){const r=_mMute27.apply(this,arguments);if(VC.audio)VC.audio.muted=!S.settings.oppVoice;return r};
 /* ربط بدورة الأونلاين */
-const _onlStart27=onlStart;onlStart=async function(){if(!requirePlayAccount())return;const r=await _onlStart27.apply(this,arguments);setTimeout(()=>vcStart().catch(e=>console.warn('voice',e)),400);return r};
+const _onlStart27=onlStart;onlStart=async function(){if(!requirePlayAccount())return;const r=await _onlStart27.apply(this,arguments);const ref=ONL.ref,id=game&&game.id;clearTimeout(ONL.voiceTimer);ONL.voiceTimer=setTimeout(()=>{if(ONL.ref===ref&&game&&game.id===id&&!game.over)vcStart().catch(e=>console.warn('voice',e))},400);return r};
 const _onlPump27=onlPump;onlPump=function(){vcSignal();return _onlPump27.apply(this,arguments)};
-const _onlListen27=onlListen;onlListen=function(ref){_onlListen27.apply(this,arguments);ref.onSnapshot(()=>{setTimeout(vcSignal,50)},()=>{})};
+/* Voice shares the single room listener; onlClose owns its cleanup. */
 const _onlClose27=onlClose;onlClose=function(){vcStop();return _onlClose27.apply(this,arguments)};
 
 /* ================= v28: صورة الملف الشخصي — اللاعب يختار صورته من جواله ================= */
@@ -4725,7 +4819,7 @@ function avConfirm(d){showLayer('<div class="scrim avp" data-x="1"><div class="c
 function avMenu(){const has=!!S.avatarImg;showLayer('<div class="scrim avp" data-x="1"><div class="card dlg"><span class="tag">ملفك الشخصي</span><h3>صورتك</h3><div class="prev" style="background-image:'+(has?'url('+S.avatarImg+')':'url(ui/avatar.webp)')+'"></div><div class="row"><button class="pbtn" data-a="pick">📷 اختر من الصور</button>'+(has?'<button class="gbtn" data-a="def">الصورة الافتراضية</button>':'')+'<button class="gbtn" data-a="x">رجوع</button></div></div></div>',
   {pick:()=>{closeLayer();avPick()},def:()=>{S.avatarImg=null;persist();avApply();avSync();closeLayer();toast('رجعت للصورة الافتراضية')},x:()=>closeLayer()})}
 /* نرسل الصورة للسيرفر عشان خصمك يشوفها بالأونلاين */
-function avSync(){if(window.DAMA_AUTH&&(window.DAMA_AUTH.guest||!window.DAMA_AUTH.entered))return;try{if(ONL&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({photo:S.avatarImg||null},{merge:true}).catch(()=>{})}catch(e){}}
+function avSync(){if(typeof ACC==='undefined'||!ACC.synced||ACC.anon)return;accUpload(true)}
 document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('.p3-av.me');if(t){e.preventDefault();e.stopPropagation();avMenu()}},true);
 /* إعادة تطبيق الصورة بعد ما تتحدث الواجهات */
 const _updateProfile28=updateProfile;updateProfile=function(){const r=_updateProfile28.apply(this,arguments);avApply();return r};
@@ -4737,7 +4831,7 @@ const _onlInit28=onlInit;onlInit=function(){return _onlInit28.apply(this,argumen
 avApply();
 
 /* ================= v29: حسابات حقيقية — ضيف باسم تلقائي، تسجيل Google/إيميل، اسم فريد مع اقتراحات، حفظ بالسيرفر ================= */
-const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0,pendingCtx:null};
+const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0,pendingCtx:null,baseRev:0,baseSave:null,uploading:null,saveError:null,conflict:false,signingOut:false};
 /* أساس المقارنة: editAt = وقت آخر تعديل حقيقي للتقدم، وينحفظ مع التقدم فيبقى صحيح بعد إعادة التشغيل.
    ما يتحرك وقت التشغيل ولا وقت ما يكون الحساب مو متزامن مع السيرفر. (الحفظات القديمة بدون editAt: نستخدم savedAt) */
 const ACC_KEY=(window.DAMA_AUTH&&window.DAMA_AUTH.saveKey)||'damaworld.v1',ACC_PEND='acc.pendingRestore';
@@ -4795,29 +4889,61 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return 'skip';
   ACC.pendingCtx=null;
   const d=snap.exists?snap.data():null,cloudAt=+(d&&d.saveAt)||0;
+  if(d&&d.save){try{const parsed=JSON.parse(d.save);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('invalid')}catch(e){ACC.saveError='حفظ الحساب غير مقروء — ما استبدلناه';toast(ACC.saveError);return 'adopt-fail'}}
+  let base=null;try{base=JSON.parse(localStorage.getItem('acc.base.'+uid)||'null')}catch(e){}
+  const changed=base&&((+d?.saveRev||0)!==base.rev||(d?.saveId||null)!==base.id||cloudAt!==base.at);
+  if(changed&&d&&d.save){if(!accBackup(uid)){ACC.saveError='backup-failed';toast('ما قدرنا نحفظ النسخة الاحتياطية؛ فرّغ مساحة بالجهاز وأعد المزامنة',6000);return 'adopt-fail'}toast('تغيّر الحفظ من جهاز ثاني؛ حفظنا نسخة محلية احتياطية ونسترجع حفظ الحساب',5000)}
+  ACC.adoptKey=uid+':'+((d&&d.saveId)||'legacy')+':'+(+(d&&d.saveRev)||0)+':'+cloudAt;ACC.baseRev=+(d&&d.saveRev)||0;ACC.baseSave=(d&&d.save)||null;ACC.baseId=(d&&d.saveId)||null;ACC.saveError=null;ACC.conflict=false;
+  try{localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
+
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
-  if(d&&d.save&&(restore||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  if(d&&d.save&&(restore||changed||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
   accPendSet(null);
   if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
   /* المحلي هو الأحدث: التعديلات اللي صارت وقت عدم التزامن تنحسب الحين */
   if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now();accRaw()}
-  ACC.synced=true;accUI();accUpload(true);return 'local'}
+  ACC.synced=true;accUI();await accUpload(true);return 'local'}
 /* نعتمد حفظ السيرفر: ما نسجّل نجاح ولا نعيد التحميل إلا بعد ما تنكتب النسخة الصحيحة فعلاً */
-function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js)}catch(e){ACC.synced=false;toast('حفظك بالسيرفر فيه مشكلة — ما لمسنا شي');return false}
-  if(sessionStorage.getItem('accLoadedAt')===String(cloudAt)){ACC.synced=false;toast('ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم');return false}
+function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js);if(!sv||typeof sv!=='object'||Array.isArray(sv))throw Error('invalid')}catch(e){ACC.synced=false;toast('حفظك بالسيرفر فيه مشكلة — ما لمسنا شي');return false}
+  const marker=ACC.adoptKey||String(cloudAt);let loaded=null;try{loaded=sessionStorage.getItem('accLoadedAt')}catch(e){}if(loaded===marker){ACC.synced=false;toast('ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم');return false}
   sv.editAt=cloudAt;delete sv.unsyncedDirty;const out=JSON.stringify(sv);ACC.reloading=true;
   try{localStorage.setItem(ACC_KEY,out);if(localStorage.getItem(ACC_KEY)!==out)throw new Error('verify')}
   catch(e){ACC.reloading=false;ACC.synced=false;
     toast(e&&(e.name==='QuotaExceededError'||e.code===22)?'مساحة التخزين بالجوال ممتلئة — ما قدرنا نرجّع حفظك. تقدمك بالسيرفر سليم':'ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم',5000);return false}
-  accPendSet(null);try{sessionStorage.setItem('accLoadedAt',String(cloudAt))}catch(e){}
+  accPendSet(null);try{sessionStorage.setItem('accLoadedAt',marker)}catch(e){}
   if(!window.__accNoReload)location.reload();return true}
-function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
+function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S));window.DAMA_LOCAL_SAVE_FAILED=false}catch(e){window.DAMA_LOCAL_SAVE_FAILED=true;toast('ما قدرنا نحفظ بالجهاز؛ لا تسكر الصفحة قبل تأكيد الحفظ بالسيرفر',6000)}try{updateProfile()}catch(e){}}
 /* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) — بس بعد ما يتأكد التزامن ---------- */
-function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;if(window.DAMA_AUTH&&(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==window.DAMA_AUTH.uid||ONL.user.uid!==window.DAMA_AUTH.uid))return;const t=Date.now();clearTimeout(ACC.upT);
-  if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return}ACC.lastUp=t;
+function accBytes(text){let n=0;for(const c of text){const cp=c.codePointAt(0);n+=cp<128?1:cp<2048?2:cp<65536?3:4}return n}
+function accBackup(uid){try{localStorage.setItem('acc.backup.'+uid,JSON.stringify(S));return true}catch(e){return false}}
+function accSaveStatus(){if(window.DAMA_LOCAL_SAVE_FAILED&&ACC.saveError)return 'الحفظ ما اكتمل بالجهاز أو السيرفر؛ لا تسكر الصفحة';if(ACC.conflict)return 'الحفظ تغيّر من جهاز ثاني — راجع المزامنة';if(ACC.saveError)return 'تقدمك محفوظ بالجهاز؛ ننتظر اتصال السيرفر';if(ACC.uploading)return 'جارٍ حفظ التقدم…';if(ACC.synced&&ACC.ackedFp!==accFp())return 'تقدمك بالجهاز؛ بانتظار حفظ آخر التغييرات';return ACC.synced?'آخر حفظ بالسيرفر تم بنجاح ✅':'جارٍ قراءة حفظ الحساب…'}
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return Promise.resolve(false);
+  const uid=ONL.user.uid;if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid||(window.DAMA_AUTH&&uid!==window.DAMA_AUTH.uid))return Promise.resolve(false);
+  clearTimeout(ACC.upT);const t=Date.now();
+  if(ACC.uploading)return ACC.uploading.then(ok=>ok&&now?accUpload(true):ok);
+  if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return Promise.resolve(false)}
   if(!S.editAt)S.editAt=S.savedAt||t;
-  const sv=Object.assign({},S);let js=JSON.stringify(sv);if(js.length>700000){delete sv.replays;js=JSON.stringify(sv)}
-  ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name,nameKey:ACC.key||null,photo:S.avatarImg||null,lvl:(typeof level==='function'?level():1),rating:S.rating||1000,wins:S.wins||0,save:js,saveAt:S.editAt,seen:t},{merge:true}).catch(()=>{})}
+  const sv=Object.assign({},S);delete sv.savedAt;let js=JSON.stringify(sv);if(accBytes(js)+accBytes(S.avatarImg||'')>850000){delete sv.replays;js=JSON.stringify(sv)}
+  if(accBytes(js)+accBytes(S.avatarImg||'')>900000){ACC.saveError='save-too-large';accBackup(uid);toast('الحفظ كبير؛ قلّل حجم صورة حسابك وأعد المحاولة. تقدمك باقي بالجهاز',6000);return Promise.resolve(false)}
+  if(js===ACC.ackedSave&&!ACC.saveError)return Promise.resolve(true);
+  const token=uid+'-'+t+'-'+Math.random().toString(36).slice(2),expectedRev=ACC.baseRev,expectedSave=ACC.baseSave,fp=accFp(),prior=ACC.lastAttempt;ACC.lastAttempt={id:token,js,at:sv.editAt,fp};
+  ACC.uploading=(async()=>{try{
+    const ref=ONL.db.collection('users').doc(uid);
+    const saved=await ONL.db.runTransaction(async tx=>{
+      const snap=await tx.get(ref),d=snap.exists?snap.data():{};
+      if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)throw {code:'session'};
+      if(prior&&d.saveId===prior.id&&d.save===prior.js)return {rev:+d.saveRev||0,...prior};
+      if((+d.saveRev||0)!==expectedRev||(d.save||null)!==expectedSave)throw {code:'save-conflict'};
+      const next=expectedRev+1;
+      tx.set(ref,{photo:sv.avatarImg||null,lvl:1+Math.floor((sv.xp||0)/100),rating:sv.rating||1000,wins:sv.wins||0,save:js,saveAt:sv.editAt,saveRev:next,saveId:token,seen:t,...(!snap.exists?{created:t,name:ACC.name||S.name}:{})},{merge:true});return {rev:next,id:token,js,at:sv.editAt,fp};
+    });
+    ACC.baseRev=saved.rev;ACC.baseSave=saved.js;ACC.baseId=saved.id;ACC.ackedSave=saved.js;ACC.ackedFp=saved.fp;ACC.lastUp=t;ACC.saveError=null;ACC.lastAttempt=null;
+    try{localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:saved.rev,id:saved.id,at:saved.at}))}catch(e){}
+    return true;
+  }catch(e){ACC.saveError=e.code||e.message||'save';accBackup(uid);
+    if(e.code==='save-conflict'){ACC.conflict=true;ACC.synced=false;toast(window.DAMA_LOCAL_SAVE_FAILED?'تغيّر حفظك من جهاز ثاني والتخزين بالجهاز متعطّل؛ لا تسكر الصفحة':'تغيّر حفظك من جهاز ثاني. نسختك بالجهاز محفوظة؛ افتح حسابي للمزامنة',6000)}
+    else{toast(window.DAMA_LOCAL_SAVE_FAILED?'الحفظ بالجهاز والسيرفر ما اكتمل؛ لا تسكر الصفحة وبنعيد المحاولة':'ما اكتمل الحفظ بالسيرفر؛ تقدمك باقي بالجهاز وبنعيد المحاولة',5000);ACC.upT=setTimeout(()=>accUpload(true),30000)}return false;
+  }finally{ACC.uploading=null}})();return ACC.uploading.then(ok=>ok&&now?accUpload(true):ok)}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)accUpload(true)});
 /* تعديل حقيقي؟ نحرّك editAt بس لو المحتوى تغيّر والحساب متزامن (أو ضيف). غير كذا نعلّم إن فيه تعديل معلّق */
 function accMark(){const fp=accFp();if(fp===ACC.lastFp)return;ACC.lastFp=fp;
@@ -4861,32 +4987,36 @@ function accNameDlg(first,pref){accDlg('<span class="tag">'+(first?'خطوة أ�
   '<div class="row"><button class="pbtn" data-a="ok" id="aOk" disabled>اعتمد الاسم</button>'+(first?'':'<button class="gbtn" data-a="x">إلغاء</button>')+'</div>',
   {ok:()=>accClaim(($('#aN').value||'').trim()),x:()=>closeLayer()},first?()=>{if(!ACC.key)setTimeout(()=>accNameDlg(true),200)}:null);
   const i=$('#aN');i.addEventListener('input',()=>{clearTimeout(accCk);accCk=setTimeout(accCheck,380)});document.getElementById('aG').onclick=e=>{const b=e.target.closest('button[data-n]');if(b){i.value=b.dataset.n;accCheck()}};if(i.value)accCheck();setTimeout(()=>i.focus(),60)}
-async function accFree(n){const k=accKey(n);if(!k)return false;try{const d=await ONL.db.collection('names').doc(k).get();return !d.exists||d.data().uid===ONL.user.uid}catch(e){return false}}
+async function accFree(n){const k=accKey(n);if(!k)return false;const d=await ONL.db.collection('names').doc(k).get({source:'server'});return !d.exists||d.data().uid===ONL.user.uid}
 function accSugs(n){const b=n.trim().slice(0,10),r=()=>Math.floor(Math.random()*90+10);const ar=/[؀-ۿ]/.test(b);
   const f=(x,suf)=>x.slice(0,14-suf.length)+suf;return[f(b,' '+r()),f(b,ar?' الكويتي':'_kw'),f(b,'_965'),(ar?'ال':'the_')+b,f(b,ar?' الذهبي':'_gold'),f(b,''+r()+r())].map(x=>x.slice(0,14)).filter((x,i,a)=>!accValid(x)&&a.indexOf(x)===i)}
-async function accCheck(){const i=$('#aN'),ok=$('#aOk'),G=$('#aG');if(!i)return;const n=i.value.trim();G.innerHTML='';ok.disabled=true;
-  const v=accValid(n);if(v){accSay(n?v:'');return}accSay('نشيك…',true);const mine=n;
-  const free=await accFree(n);if(($('#aN')||{}).value!==undefined&&$('#aN').value.trim()!==mine)return;
-  if(free){accSay('✅ الاسم متاح',true);ok.disabled=false;return}
-  accSay('❌ هذا الاسم مستخدم — اختر اسم ثاني');const c=accSugs(n),av=[];for(const x of c){if(av.length>=3)break;if(await accFree(x))av.push(x)}
-  G.innerHTML=av.map(x=>'<button data-n="'+esc(x)+'">'+esc(x)+'</button>').join('')}
-async function accClaim(n){const v=accValid(n);if(v){accSay(v);return}const k=accKey(n),uid=ONL.user.uid,db=ONL.db,old=ACC.key;$('#aOk').disabled=true;accSay('نحجز الاسم…',true);
-  try{await db.runTransaction(async tx=>{const ref=db.collection('names').doc(k),d=await tx.get(ref);if(d.exists&&d.data().uid!==uid)throw{code:'taken'};
-      tx.set(ref,{uid,name:n,at:Date.now()});if(old&&old!==k)tx.delete(db.collection('names').doc(old));
+async function accCheck(){const i=$('#aN'),ok=$('#aOk'),G=$('#aG');if(!i||!ok||!G)return;const n=i.value.trim(),epoch=ACC.nameCheck=(ACC.nameCheck||0)+1;
+  const current=()=>$('#aN')===i&&i.value.trim()===n&&epoch===ACC.nameCheck;
+  G.innerHTML='';ok.disabled=true;const v=accValid(n);if(v){accSay(n?v:'');return}accSay('نشيك…',true);
+  try{const free=await accFree(n);if(!current())return;if(free){accSay('✅ الاسم متاح',true);ok.disabled=!!ACC.claiming;return}
+    accSay('هذا الاسم مستخدم — اختر اسم ثاني');const av=[];for(const x of accSugs(n)){if(!current())return;if(av.length>=3)break;if(await accFree(x))av.push(x)}
+    if(current())G.innerHTML=av.map(x=>'<button data-n="'+esc(x)+'">'+esc(x)+'</button>').join('');
+  }catch(e){if(current()){accSay('تعذّر فحص الاسم؛ تقدر تعيد المحاولة');ok.disabled=false}}}
+async function accClaim(n){const v=accValid(n);if(v){accSay(v);return}if(ACC.claiming)return;ACC.claiming=true;const button=$('#aOk'),input=$('#aN');const k=accKey(n),uid=ONL.user.uid,db=ONL.db,old=ACC.key;if(button)button.disabled=true;accSay('نحجز الاسم…',true);
+  try{await db.runTransaction(async tx=>{const ref=db.collection('names').doc(k),d=await tx.get(ref);if(d.exists&&d.data().uid!==uid)throw{code:'taken'};if(ONL.auth.currentUser.uid!==uid)throw{code:'session'};const oldRef=old&&old!==k?db.collection('names').doc(old):null,oldDoc=oldRef?await tx.get(oldRef):null;
+      tx.set(ref,{uid,name:n,at:Date.now()});if(oldDoc&&oldDoc.exists&&oldDoc.data().uid===uid)tx.delete(oldRef);
       tx.set(db.collection('users').doc(uid),{name:n,nameKey:k},{merge:true})});
-    ACC.key=k;ACC.name=n;S.name=n;delete S.wantName;accRaw();accUpload(true);closeLayer();toast('أهلاً '+n+' 🎉 الاسم صار لك');accUI()}
-  catch(e){if(e&&e.code==='taken'){accSay('❌ أحد سبقك عليه — اختر اسم ثاني');accCheck()}else accSay(accErr(e))}}
+    if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return;ACC.key=k;ACC.name=n;S.name=n;delete S.wantName;accRaw();accUpload(true);if($('#aN')===input)closeLayer();toast('أهلاً '+n+' 🎉 الاسم صار لك');accUI()}
+  catch(e){if($('#aN')!==input)return;if(e&&e.code==='taken'){accSay('❌ أحد سبقك عليه — اختر اسم ثاني');accCheck()}else if($('#aN')===input)accSay(accErr(e))}finally{ACC.claiming=false;if($('#aN')===input&&$('#aOk')===button&&button)button.disabled=!!accValid(input.value.trim())}}
 /* ---------- حسابي: الحالة، تغيير الاسم، خروج، حذف ---------- */
 function accMenu(){if(!ACC.ready){toast('الحسابات تشتغل من رابط اللعبة الخاص');return}if(ACC.anon)return accLoginDlg();
   const u=ONL.auth.currentUser,how=(u.providerData&&u.providerData[0]&&u.providerData[0].providerId)==='google.com'?'Google':'الإيميل';
-  accDlg('<span class="tag">حسابي</span><h3>'+esc(S.name)+'</h3><p class="muted">مسجّل بـ '+how+(u.email?' · <span dir="ltr">'+esc(u.email)+'</span>':'')+'<br>تقدمك محفوظ بالسيرفر ✅</p>'+
-    '<div class="row"><button class="pbtn" data-a="nm">✏️ تغيير الاسم</button><button class="gbtn" data-a="out">تسجيل خروج</button></div><button class="lnk" data-a="del" style="color:#ff9a8a">حذف الحساب نهائياً</button>',
-    {nm:()=>accNameDlg(false,S.name),out:()=>accSignOut(),del:()=>accDelDlg()})}
-async function accSignOut(){accUpload(true);try{await ONL.auth.signOut()}catch(e){}try{localStorage.removeItem('damaworld.v1');sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND)}catch(e){}toast('سجّلت خروج');setTimeout(()=>location.reload(),600)}
-function accDelDlg(){accDlg('<span class="tag" style="color:#ff9a8a">تحذير</span><h3>حذف الحساب؟</h3><p class="muted">بينحذف حسابك واسمك وكل تقدمك نهائياً، وما نقدر نرجّعه.</p><div class="row"><button class="gbtn danger" data-a="y">احذف نهائياً</button><button class="pbtn" data-a="n">لا، رجوع</button></div>',{y:()=>accDelete(),n:()=>accMenu()})}
-async function accDelete(){const u=ONL.auth.currentUser,db=ONL.db;try{if(ACC.key)await db.collection('names').doc(ACC.key).delete();await db.collection('users').doc(u.uid).delete();await u.delete();
-    localStorage.removeItem('damaworld.v1');toast('انحذف حسابك');setTimeout(()=>location.reload(),800)}
-  catch(e){if(e.code==='auth/requires-recent-login')toast('لأمانك: سجّل خروج وادخل من جديد، وبعدها احذف');else toast(accErr(e))}}
+  accDlg('<span class="tag">حسابي</span><h3>'+esc(S.name)+'</h3><p class="muted">مسجّل بـ '+how+(u.email?' · <span dir="ltr">'+esc(u.email)+'</span>':'')+'<br>'+esc(accSaveStatus())+'</p>'+
+    (ACC.conflict?'<button class="pbtn" data-a="sync">استرجاع حفظ الحساب (النسخة المحلية احتياطية)</button>':'')+'<div class="row"><button class="pbtn" data-a="nm">✏️ تغيير الاسم</button><button class="gbtn" data-a="out">تسجيل خروج</button></div><button class="lnk" data-a="del" style="color:#ff9a8a">حذف الحساب نهائياً</button>',
+    {nm:()=>accNameDlg(false,S.name),out:()=>accSignOut(),del:()=>accDelDlg(),sync:()=>accSync({uid:u.uid,restore:true})})}
+async function accSignOut(){if(ACC.signingOut)return;ACC.signingOut=true;
+  try{if(!await accUpload(true)){toast('ما سجلنا خروج لأن آخر حفظ ما اكتمل. جرّب بعد رجوع الاتصال',5000);return}
+    const uid=ONL.user.uid;accBackup(uid);await ONL.auth.signOut();
+    try{localStorage.removeItem(ACC_KEY);sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND);localStorage.removeItem('acc.owner')}catch(e){}
+    toast('سجّلت خروج');location.reload();
+  }catch(e){toast(accErr(e))}finally{ACC.signingOut=false}}
+function accDelDlg(){accDlg('<span class="tag">حذف الحساب</span><h3>تواصل مع الإدارة</h3><p class="muted">الحذف من داخل اللعبة موقوف مؤقتاً لحماية بياناتك أثناء تجهيز الحذف الآمن.</p><button class="pbtn" data-a="n">رجوع</button>',{n:()=>accMenu()})}
+async function accDelete(){toast('الحذف من داخل اللعبة موقوف مؤقتاً لحماية تقدمك. تواصل مع إدارة اللعبة لحذف الحساب.',6000);return false}
 /* ---------- مداخل الواجهة ---------- */
 function accUI(){let b=$('#accBan');const lb=$('#lbProf');if(!ACC.ready||!ACC.anon||!lb||mode!=='lobby'||document.querySelector('.scrim')){if(b)b.remove();return}
   if(!b){b=document.createElement('button');b.id='accBan';b.textContent='💾 سجّل واحفظ تقدمك';b.onclick=e=>{e.stopPropagation();accLoginDlg()};document.body.appendChild(b)}
@@ -4896,6 +5026,7 @@ document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#hu
 /* زر الحساب بالأونلاين بدال زر Google القديم */
 const _onlGoogle29=onlGoogle;onlGoogle=function(){return accLoginDlg()};
 if(!window.DAMA_AUTH)setTimeout(accBoot,800);
+
 
 /* v30: إصلاح قلب الشاشة — المتصفح يعطي المقاس القديم أول لحظة الدوران، فنعيد الحساب بعد ما يستقر */
 (function(){let last='',busy=false,tm=[];
@@ -4933,17 +5064,20 @@ function ctlAnn(a){const old=$('#ann31');if(!a||!a.id||!a.text){if(old)old.remov
   d.innerHTML='<b>📢 الإدارة</b><span>'+esc(a.text)+'</span><button aria-label="إغلاق">✕</button>';
   d.querySelector('button').onclick=()=>{S.annSeen=a.id;persist();d.remove()};document.body.appendChild(d);try{lbSound&&lbSound('pop')}catch(e){}}
 /* هدايا الكوينز: كل هدية لها رقم، ما تنحسب مرتين */
-function ctlGifts(list){if(!Array.isArray(list)||!list.length)return;S.giftIds=S.giftIds||[];let tot=0;
-  for(const g of list){if(!g||!g.id||S.giftIds.includes(g.id))continue;const c=Math.round(+g.c||0);S.coins=Math.max(0,(S.coins||0)+c);tot+=c;S.giftIds.push(g.id)}
-  if(S.giftIds.length>60)S.giftIds=S.giftIds.slice(-60);if(!tot)return;persist();try{updateProfile()}catch(e){}
-  const e=$('#lbCoins span');if(e)e.textContent=S.coins.toLocaleString('en');
-  toast(tot>0?'🎁 وصلتك '+tot.toLocaleString('en')+' كوينز من الإدارة':'⚠️ الإدارة عدّلت كوينزك ('+tot.toLocaleString('en')+')',4200)}
+function ctlGifts(list){if(!Array.isArray(list)||!list.length)return;
+  S.giftIds=S.giftIds||[];const seen=new Set(S.giftIds);let changed=false,tot=0;
+  // Old clients kept only 60 receipts. Older entries preceding retained receipts are historical, not new gifts.
+  if(!S.giftReceiptVersion&&seen.size>=60){const first=list.findIndex(g=>g&&seen.has(g.id));if(first>0)for(const g of list.slice(0,first))if(g&&g.id){seen.add(g.id);changed=true}}
+  S.giftReceiptVersion=2;
+  for(const g of list){if(!g||typeof g.id!=='string'||seen.has(g.id)||!Number.isFinite(+g.c))continue;const c=Math.round(+g.c);S.coins=Math.max(0,(S.coins||0)+c);tot+=c;seen.add(g.id);changed=true}
+  S.giftIds=Array.from(seen);if(!changed)return;persist();try{updateProfile()}catch(e){}
+  const counter=$('#lbCoins span');if(counter)counter.textContent=S.coins.toLocaleString('en');if(tot)toast(tot>0?'هدية الإدارة: +'+tot+' عملة':'تعديل من الإدارة: '+tot+' عملة',4000)}
 /* الكتم: يقفل المايك بالمباراة */
 function ctlApplyMute(){try{if(CTL.mute&&typeof VC!=='undefined'&&VC.local)VC.local.getAudioTracks().forEach(t=>t.enabled=false)}catch(e){}}
 (function(){const b=$('#mMic');if(!b)return;const prev=b.onclick;b.onclick=function(){if(CTL.mute&&game&&game.online){toast('🔇 المايك مقفول عليك من الإدارة');return}return prev&&prev.apply(this,arguments)}})();
 if(typeof vcStart==='function'){const _vc31=vcStart;vcStart=async function(){const r=await _vc31.apply(this,arguments);ctlApplyMute();return r}}
 /* نبض: آخر ظهور (عشان عدّاد الأونلاين باللوحة) */
-function ctlBeat(){if(window.DAMA_AUTH&&(window.DAMA_AUTH.guest||!window.DAMA_AUTH.entered))return;try{if(!document.hidden&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({seen:Date.now(),name:S.name||'لاعب',lvl:(typeof level==='function'?level():1)},{merge:true}).catch(()=>{})}catch(e){}}
+function ctlBeat(){if(window.DAMA_AUTH&&(window.DAMA_AUTH.guest||!window.DAMA_AUTH.entered))return;try{if(!document.hidden&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({seen:Date.now()},{merge:true}).catch(()=>{})}catch(e){}}
 async function ctlBoot(){try{await onlInit()}catch(e){return}const db=ONL.db,uid=ONL.user.uid;
   CTL.unsub.forEach(f=>{try{f()}catch(e){}});CTL.unsub=[];
   /* أول مرة نشوف هاللاعب: نسجّل تاريخ دخوله */
@@ -4979,18 +5113,26 @@ function liveApply(d){d=d||{};
   for(const k in LIVE_DEF.tours){const o=LIVE.tours[k]||{},D=LIVE_DEF.tours[k];TOURS[k].name=(o.name||'').trim()||D.name;
     TOURS[k].prize=D.prize.map((p,i)=>(o.prize&&o.prize[i]!=null&&isFinite(o.prize[i]))?Math.max(0,Math.round(+o.prize[i])):p)}
   LIVE.event=d.event&&d.event.title?d.event:null;
-  LIVE.season=d.season&&(d.season.name||d.season.end)?d.season:null;
+  LIVE.season=d.season&&(d.season.id||d.season.name||d.season.end)?d.season:null;LIVE.loaded=true;seasonState();persist();
   try{if(LOBBY.on&&mode==='lobby')lbEvents()}catch(e){}}
 
 /* ---------- الموسم ---------- */
-function seasonEnd(){const s=LIVE.season;if(s&&s.end&&s.end>Date.now())return new Date(s.end);const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1)}
+function seasonState(){try{if(!LIVE.loaded)return false}catch(e){return false}S.pass=S.pass||{prem:false,cf:[],cp:[]};const cfg=LIVE.season||{},id=String(cfg.id||'legacy-v1');
+  if(!S.pass.seasonId){S.pass.seasonId=id;S.pass.xp=+S.xp||0}
+  else if(S.pass.seasonId!==id){S.passHistory=S.passHistory||{};S.passHistory[S.pass.seasonId]={xp:S.pass.xp,prem:S.pass.prem,cf:S.pass.cf,cp:S.pass.cp};S.pass={seasonId:id,xp:0,prem:false,cf:[],cp:[]}}
+  if(cfg.end!=null&&Number.isFinite(+cfg.end))S.pass.end=+cfg.end;
+  if(!S.pass.end){const d=new Date();S.pass.end=new Date(d.getFullYear(),d.getMonth()+1,1).getTime()}
+  return true}
+function seasonEnd(){seasonState();return new Date(S.pass&&S.pass.end||Date.now())}
+function seasonActive(){return seasonState()&&Date.now()<S.pass.end}
+function seasonClaimOpen(){return seasonState()&&Date.now()<S.pass.end+7*864e5}
 function seasonName(){return(LIVE.season&&LIVE.season.name)||'موسم الديرة'}
 
 /* ---------- الفعالية: مضاعفة الكوينز أو الخبرة ---------- */
 function eventOn(){const e=LIVE.event,t=Date.now();return!!(e&&(!e.start||t>=e.start)&&(!e.end||t<e.end))}
 function eventMult(kind){if(!eventOn())return 1;const b=LIVE.event.boost;return b===kind||b==='both'?2:1}
 {const _ac=addCoins;addCoins=function(n){if(n>0)n=Math.round(n*eventMult('coins'));return _ac.call(this,n)}}
-{const _ax=addXP;addXP=function(n){if(n>0)n=Math.round(n*eventMult('xp'));return _ax.call(this,n)}}
+{const _ax=addXP;addXP=function(n){if(n>0)n=Math.round(n*eventMult('xp'));if(seasonActive())S.pass.xp=(S.pass.xp||0)+n;return _ax.call(this,n)}}
 
 /* ---------- بطولة الجمعة: موعد يحدده المالك ---------- */
 {const _nf=nextFriday20;nextFriday20=function(){const f=LIVE.tours.fri;if(f&&f.at&&f.at+(f.hours||3)*36e5>Date.now())return new Date(f.at);return _nf()}}
@@ -5021,7 +5163,7 @@ function repBtn(){const p=$('#oppP');let b=$('#rep32');const show=!!(p&&game&&ga
 setInterval(repBtn,1200);
 function repDlg(){const o=repOpp();if(!o)return;if(REP.done[o.uid]){toast('بلّغت عنه قبل ✅ الإدارة بتشوف البلاغ');return}let why='';
   showLayer('<div class="scrim acc rep32" data-x="1"><div class="card dlg"><span class="tag" style="color:#ff9a8a">🚩 بلاغ</span><h3>تبلّغ عن '+esc(o.name)+'؟</h3><p class="muted">البلاغ يوصل للإدارة بس — خصمك ما يدري.</p><div class="rs">'+
-    REP_WHY.map(r=>'<button data-w="'+r[0]+'">'+r[1]+'</button>').join('')+'</div><input class="ain" id="repN" maxlength="140" placeholder="تفاصيل (اختياري)"><div class="st bad" id="aS"></div>'+
+    REP_WHY.map(r=>'<button data-w="'+esc(r[0])+'">'+r[1]+'</button>').join('')+'</div><input class="ain" id="repN" maxlength="140" placeholder="تفاصيل (اختياري)"><div class="st bad" id="aS"></div>'+
     '<div class="row"><button class="gbtn danger" data-a="send">أرسل البلاغ</button><button class="pbtn" data-a="x">إلغاء</button></div></div></div>',
     {send:()=>repSend(o,why),x:()=>closeLayer()});try{accUI()}catch(e){}
   document.querySelectorAll('.rep32 .rs button').forEach(b=>b.onclick=()=>{why=b.dataset.w;document.querySelectorAll('.rep32 .rs button').forEach(x=>x.classList.toggle('on',x===b))})}
@@ -5312,10 +5454,10 @@ async function boot(){try{await Promise.race([document.fonts.load('700 40px "Ree
 $('#goB').onclick=()=>{audio();startAmbience();startMusic();const v=$('#nameI').value.trim();S.name=v||'ضيف';persist();updateProfile();$('#start').style.transition='opacity .5s';$('#start').style.opacity='0';
   setTimeout(()=>{$('#start').remove();$('#hud').hidden=false;joyEl.hidden=false;mode='toExplore';const p=new THREE.Vector3(),q=new THREE.Quaternion();camCur=camDist;camTweenTo(p,q,1.4,()=>{mode='explore';resize();setTimeout(firstRun,900);toast('اسحب يسار الشاشة للمشي، واسحب يمينها لتدوير الكاميرا. الدوانية أمامك!',4200)},(tp,tq)=>explorePose(tp,tq))},450)};
 $('#nameI').addEventListener('keydown',e=>{if(e.key==='Enter')$('#goB').click()});
-if(window.DAMA_AUTH){window.DAMA_AUTH.attach({retry:()=>accBoot(),enter:()=>boot(),afterEnter:()=>{if(window.DAMA_AUTH.guest)return;avSync();ctlBoot();if(!ACC.key)setTimeout(()=>accNameDlg(true,S.wantName),600)}})}else boot();
+if(window.DAMA_AUTH){window.DAMA_AUTH.attach({retry:()=>accBoot(),enter:()=>boot(),afterEnter:()=>{if(window.DAMA_AUTH.guest)return;avSync();ctlBoot();if(onlStored())toast('عندك مباراة محفوظة؛ ادخل العالم وافتح الأونلاين لاسترجاعها',6000);if(!ACC.key)setTimeout(()=>accNameDlg(true,S.wantName),600)}})}else boot();
 </script>
 
 
-<script src="auth_start.js?v=guest-browse-1"></script>
+<script src="auth_start.js?v=reliability-1"></script>
 </body>
 </html>

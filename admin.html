@@ -171,7 +171,7 @@ body{overflow-x:hidden}
     <div id="evCur"></div>
   </div>
   <div class="card"><h2>🏅 الموسم</h2><p class="hint">اسم الموسم ومتى يخلص (يطلع باللوبي). إذا ما حددت، يخلص آخر كل شهر.</p>
-    <input class="in" id="seN" maxlength="30" placeholder="موسم الديرة">
+    <label>معرّف الموسم (غيّره فقط لبدء موسم جديد)<input class="in" id="seId" maxlength="40" placeholder="legacy-v1"></label><input class="in" id="seN" maxlength="30" placeholder="موسم الديرة">
     <label style="display:block;margin-top:8px">يخلص<input class="in" id="seE" type="datetime-local"></label>
     <div class="row" style="margin-top:10px"><button class="btn" id="seSave">احفظ الموسم</button><button class="btn sec" id="seReset">رجّع الافتراضي</button></div>
   </div>
@@ -287,10 +287,10 @@ function drawPlayer(){const id=cur,d=PD[id]||{},c=ctlCache[id]||{},co=coinsOf(d)
 function closeSheet(){$('#sheet').classList.remove('on');cur=null}
 $('#sheet').onclick=e=>{if(e.target.id==='sheet')closeSheet()};
 async function setCtl(id,data){await C.doc(id).set(Object.assign({by:OWNER,at:Date.now()},data),{merge:true});ctlCache[id]=Object.assign({},ctlCache[id]||{},data)}
-async function gift(sign){const a=Math.round(+$('#cAmt').value||0);if(a<=0){toast('اكتب الكمية');return}
-  const d=PD[cur]||{},name=d.name||'اللاعب';if(sign<0&&!confirm('تخصم '+num(a)+' كوينز من '+name+'؟'))return;
-  try{await setCtl(cur,{gifts:firebase.firestore.FieldValue.arrayUnion({id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),c:sign*a,at:Date.now()})});
-    toast(sign>0?'✅ أضفت '+num(a)+' لـ '+name:'✅ خصمت '+num(a)+' من '+name);$('#cAmt').value=''}catch(e){toast(errMsg(e))}}
+async function gift(sign){const id=cur,input=$('#cAmt');if(!id||input.disabled)return;const a=Math.round(+$('#cAmt').value||0);if(a<=0){toast('اكتب الكمية');return}
+  const d=PD[id]||{},name=d.name||'اللاعب';if(sign<0&&!confirm('تخصم '+num(a)+' كوينز من '+name+'؟'))return;
+  input.disabled=true;try{await setCtl(id,{gifts:firebase.firestore.FieldValue.arrayUnion({id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),c:sign*a,at:Date.now()})});
+    toast(sign>0?'✅ أضفت '+num(a)+' لـ '+name:'✅ خصمت '+num(a)+' من '+name);if(cur===id&&$('#cAmt')===input)input.value=''}catch(e){toast(errMsg(e))}finally{input.disabled=false}}
 async function toggleMute(){const c=ctlCache[cur]||{};try{await setCtl(cur,{mute:!c.mute});toast(c.mute?'✅ فكّيت الكتم':'🔇 انكتم');drawPlayer();refreshViews()}catch(e){toast(errMsg(e))}}
 async function toggleBan(){const c=ctlCache[cur]||{},d=PD[cur]||{};
   if(c.ban){try{await setCtl(cur,{ban:false,banWhy:''});toast('✅ فكّيت الحظر');drawPlayer();refreshViews()}catch(e){toast(errMsg(e))}return}
@@ -317,18 +317,24 @@ async function cfgPut(field,val){const o={};o[field]=val;try{await CFG.update(o)
 /* ---------- البلاغات ---------- */
 const WHY={voice:'كلام غير لائق بالمايك',name:'اسم أو صورة غير لائقة',cheat:'غش أو تلاعب',other:'شي ثاني'};
 const R=db.collection('reports');let rFilt='open';
+const REPORT_PAGE={token:0,cursor:null,docs:[],more:false,busy:false};
+(function(){const first=document.querySelector('[data-r]');if(first){const b=document.createElement('button');b.className='chip';b.dataset.r='legacy';b.textContent='بلاغات قديمة بلا تاريخ';first.parentNode.appendChild(b)}})();
 async function repBadge(){try{const n=await cnt(R.where('status','==','open'));const b=$('#rBdg');b.hidden=!n;b.textContent=n>99?'99+':n}catch(e){}}
 document.querySelectorAll('[data-r]').forEach(c=>c.onclick=()=>{document.querySelectorAll('[data-r]').forEach(x=>x.classList.toggle('on',x===c));rFilt=c.dataset.r;loadReports()});
-async function loadReports(){const el=$('#rlist');el.innerHTML='<div class="empty">نحمّل…</div>';
-  try{const r=await R.where('status','==',rFilt).limit(100).get();const docs=r.docs.slice().sort((a,b)=>(b.data().at||0)-(a.data().at||0));
-    if(!docs.length){el.innerHTML='<div class="empty">'+(rFilt==='open'?'ما فيه بلاغات جديدة 👌':'ما فيه')+'</div>';return}
+async function loadReports(more){if(more&&REPORT_PAGE.busy)return;const el=$('#rlist'),filter=rFilt,token=++REPORT_PAGE.token;if(!more){REPORT_PAGE.cursor=null;REPORT_PAGE.docs=[];el.innerHTML='<div class="empty">نحمّل…</div>'}REPORT_PAGE.busy=true;
+  try{let query=filter==='legacy'?R.orderBy(firebase.firestore.FieldPath.documentId()):R.orderBy('at','desc');if(REPORT_PAGE.cursor)query=query.startAfter(REPORT_PAGE.cursor);
+    const r=await query.limit(100).get();if(token!==REPORT_PAGE.token||filter!==rFilt)return;
+    REPORT_PAGE.more=r.docs.length===100;REPORT_PAGE.cursor=r.docs[r.docs.length-1]||REPORT_PAGE.cursor;
+    const old=new Set(REPORT_PAGE.docs.map(d=>d.id));for(const d of r.docs){const data=d.data();if(!old.has(d.id)&&(filter==='legacy'?!data.at:data.status===filter))REPORT_PAGE.docs.push(d)}const docs=REPORT_PAGE.docs;
+    const next=REPORT_PAGE.more?'<button class="btn sec" data-more="1">عرض المزيد</button>':'';
+    if(!docs.length){el.innerHTML='<div class="empty">'+(REPORT_PAGE.more?'ما فيه نتائج بهالدفعة؛ اعرض المزيد':'ما فيه بلاغات بهالقائمة')+'</div>'+next;return}
     const per={};docs.forEach(d=>{const t=d.data().target;per[t]=(per[t]||0)+1});
-    el.innerHTML=docs.map(d=>{const x=d.data();return'<div class="rep"><div class="top"><div class="av">'+esc((x.targetName||'؟').trim()[0])+'</div><div style="flex:1;min-width:0"><b>'+esc(x.targetName||'—')+'</b>'+(per[x.target]>1?'<span class="tag ban">'+per[x.target]+' بلاغات</span>':'')+'<div class="by">'+ago(x.at).replace('أونلاين الحين','الحين')+'</div></div></div>'+
+    el.innerHTML=docs.map(d=>{const x=d.data();return'<div class="rep"><div class="top"><div class="av">'+esc((x.targetName||'؟').trim()[0])+'</div><div style="flex:1;min-width:0"><b>'+esc(x.targetName||'—')+'</b>'+(per[x.target]>1?'<span class="tag ban">'+per[x.target]+' بلاغات بالقائمة</span>':'')+'<div class="by">'+ago(x.at).replace('أونلاين الحين','الحين')+'</div></div></div>'+
       '<span class="why">'+esc(WHY[x.reason]||x.reason||'')+'</span>'+(x.note?'<div class="note">"'+esc(x.note)+'"</div>':'')+'<div class="by">بلّغ عنه: '+esc(x.byName||'—')+(x.room?' · غرفة '+esc(x.room):'')+'</div>'+
-      '<div class="row"><button class="btn sec" data-op="'+esc(x.target)+'">افتح اللاعب</button>'+(x.status==='open'?'<button class="btn grn" data-done="'+d.id+'">✓ خلصت</button>':'<button class="btn sec" data-re="'+d.id+'">رجّعه جديد</button>')+'</div></div>'}).join('')}
-  catch(e){el.innerHTML='<div class="empty">'+esc(errMsg(e))+'</div>'}}
+      '<div class="row"><button class="btn sec" data-op="'+esc(x.target)+'">افتح اللاعب</button>'+(x.status==='open'?'<button class="btn grn" data-done="'+d.id+'">✓ خلصت</button>':'<button class="btn sec" data-re="'+d.id+'">رجّعه جديد</button>')+'</div></div>'}).join('')+next}
+  catch(e){if(token===REPORT_PAGE.token)el.innerHTML='<div class="empty">'+esc(errMsg(e))+'</div><button class="btn sec" data-retry="1">إعادة المحاولة</button>'}finally{if(token===REPORT_PAGE.token)REPORT_PAGE.busy=false}}
 $('#rlist').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.op)return openPlayer(b.dataset.op);
+  if(b.dataset.more)return loadReports(true);if(b.dataset.retry)return loadReports();if(b.dataset.op)return openPlayer(b.dataset.op);
   const id=b.dataset.done||b.dataset.re;if(!id)return;try{await R.doc(id).update({status:b.dataset.done?'done':'open',doneAt:Date.now()});toast(b.dataset.done?'✅ تم':'رجع للجديدة');loadReports();repBadge()}catch(err){toast(errMsg(err))}});
 
 /* ---------- المتجر ---------- */
@@ -356,7 +362,7 @@ function drawEvents(){const e=CF.event,se=CF.season||{},tr=CF.tours||{};
   document.querySelectorAll('#evB .chip').forEach(x=>x.classList.toggle('on',x.dataset.b===evBoost));
   const now=Date.now(),live=e&&(!e.start||now>=e.start)&&(!e.end||now<e.end);
   $('#evCur').innerHTML=e?'<div class="prev"><b>'+(live?'🟢 شغّالة الحين':e.end&&now>=e.end?'⚪ خلصت':'🕓 بتبدأ '+fmtD(e.start))+'</b> · '+esc(e.title)+(e.end?'<div class="upd">تخلص: '+fmtD(e.end)+'</div>':'')+'</div>':'<div class="hint" style="margin-top:10px">ما فيه فعالية حالياً.</div>';
-  $('#seN').value=se.name||'';$('#seE').value=toLocal(se.end);
+  $('#seId').value=se.id||'legacy-v1';$('#seN').value=se.name||'';$('#seE').value=toLocal(se.end);
   $('#tourF').innerHTML=Object.keys(TDEF).map(k=>{const o=tr[k]||{},D=TDEF[k],P=['الأول','الثاني','نصف النهائي','الباقي'];
     return'<div class="tgrp"><input class="in" data-tn="'+k+'" maxlength="30" value="'+esc(o.name||'')+'" placeholder="'+D.name+'"><div class="prz">'+D.prize.map((p,i)=>'<label>'+P[i]+'<input class="in" type="number" inputmode="numeric" min="0" data-tp="'+k+'" data-i="'+i+'" value="'+(o.prize&&o.prize[i]!=null?o.prize[i]:'')+'" placeholder="'+p+'"></label>').join('')+'</div>'+
       (k==='fri'?'<div class="grid2"><label>الموعد (بدال كل جمعة ٨)<input class="in" id="frAt" type="datetime-local" value="'+toLocal(o.at)+'"></label><label>مدتها بالساعات<input class="in" id="frH" type="number" min="1" max="72" value="'+(o.hours||3)+'"></label></div>':'')+'</div>'}).join('')}
@@ -364,9 +370,9 @@ $('#evSave').onclick=async()=>{const t=$('#evT').value.trim();if(!t){toast('اك
   if(st&&en&&en<=st){toast('وقت النهاية لازم بعد البداية');return}
   try{await cfgPut('event',{title:t,desc:$('#evD').value.trim(),boost:evBoost,start:st,end:en,id:Date.now()});toast('🎉 الفعالية انحفظت');setTimeout(drawEvents,400)}catch(e){toast(errMsg(e))}};
 $('#evStop').onclick=async()=>{if(!confirm('توقف الفعالية؟'))return;try{await cfgPut('event',null);$('#evT').value='';$('#evD').value='';toast('وقفت الفعالية');setTimeout(drawEvents,400)}catch(e){toast(errMsg(e))}};
-$('#seSave').onclick=async()=>{const n=$('#seN').value.trim(),en=fromLocal($('#seE').value);if(en&&en<Date.now()){toast('التاريخ لازم بالمستقبل');return}
-  try{await cfgPut('season',{name:n,end:en});toast('✅ انحفظ الموسم')}catch(e){toast(errMsg(e))}};
-$('#seReset').onclick=async()=>{try{await cfgPut('season',null);$('#seN').value='';$('#seE').value='';toast('رجع الموسم الافتراضي')}catch(e){toast(errMsg(e))}};
+$('#seSave').onclick=async()=>{const id=$('#seId').value.trim();if(!/^[a-zA-Z0-9_-]{1,40}$/.test(id)){toast('اكتب معرّف موسم بحروف إنجليزية وأرقام');return}if(id!==(CF.season?.id||'legacy-v1')&&!confirm('بدء موسم جديد يصفر تقدم الممر ويوقف الممر الذهبي القديم. متأكد؟'))return;const n=$('#seN').value.trim(),en=fromLocal($('#seE').value);if(en&&en<Date.now()){toast('التاريخ لازم بالمستقبل');return}
+  try{await cfgPut('season',{id,name:n,end:en});toast('✅ انحفظ الموسم')}catch(e){toast(errMsg(e))}};
+$('#seReset').onclick=async()=>{try{await cfgPut('season',Object.assign({},CF.season||{id:'legacy-v1'},{name:''}));$('#seN').value='';toast('رجع اسم الموسم الافتراضي؛ التقدم والموعد ما تغيروا')}catch(e){toast(errMsg(e))}};
 $('#tourSave').onclick=async()=>{const out={};for(const k in TDEF){const o={},nm=$('[data-tn="'+k+'"]').value.trim();if(nm)o.name=nm;
     const pr=[...document.querySelectorAll('[data-tp="'+k+'"]')].map(i=>i.value===''?null:Math.max(0,Math.round(+i.value)));if(pr.some(v=>v!=null))o.prize=pr;
     if(k==='fri'){const at=fromLocal($('#frAt').value);if(at){o.at=at;o.hours=Math.max(1,Math.min(72,+$('#frH').value||3))}}
@@ -376,3 +382,4 @@ $('#tourReset').onclick=async()=>{if(!confirm('ترجّع البطولات لل�
 </script>
 </body>
 </html>
+
