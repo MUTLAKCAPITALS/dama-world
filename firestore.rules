@@ -69,6 +69,85 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // Opt-in voice: at most eight real users per world channel and two per match.
+    // SDP/candidates are private to the two occupied seats, never a public room list.
+    function voiceSeat(kind, space, slot) { return /databases/$(database)/documents/$(kind)/$(space)/seats/$(slot); }
+    function voiceFresh(r) { return r.at > request.time - duration.value(90,'s'); }
+    function voiceSpace(kind, space) {
+      return kind == 'voiceWorlds' ? space.matches('^(kw|sa|bh|in|tr)_([1-9]|10)$')
+        : kind == 'voiceMatches' && space.matches('^[A-Z2-9]{4}$')
+          && request.auth.uid in [get(/databases/$(database)/documents/rooms/$(space)).data.host,
+                                  get(/databases/$(database)/documents/rooms/$(space)).data.guest]
+          && get(/databases/$(database)/documents/rooms/$(space)).data.state == 'play';
+    }
+    function voiceUnblocked(a,b) {
+      let x = /databases/$(database)/documents/socialBlocks/$(a);
+      let y = /databases/$(database)/documents/socialBlocks/$(b);
+      return (!exists(x) || !(b in get(x).data.uids)) && (!exists(y) || !(a in get(y).data.uids));
+    }
+    match /voiceControls/{uid} {
+      allow get: if registered() && notBanned();
+      allow create, update: if isAdmin() && request.resource.data.keys().hasOnly(['ban','mute','at'])
+        && request.resource.data.ban is bool && request.resource.data.mute is bool && request.resource.data.at == request.time;
+    }
+    match /voiceUsers/{uid} {
+      function shape(r) { return r.keys().hasOnly(['kind','space','slot','session'])
+        && r.kind in ['voiceWorlds','voiceMatches'] && r.space is string && r.slot.matches('^[0-7]$')
+        && r.session.matches('^[a-f0-9]{32}$'); }
+      function linked(r) { let s = getAfter(voiceSeat(r.kind,r.space,r.slot)).data; return s.uid == uid && s.session == r.session; }
+      function available(r) { let p = voiceSeat(r.kind,r.space,r.slot); return !exists(p) || get(p).data.session != r.session || !voiceFresh(get(p).data); }
+      allow get: if registered() && request.auth.uid == uid;
+      allow create: if registered() && notBanned() && request.auth.uid == uid && shape(request.resource.data) && linked(request.resource.data);
+      allow update: if registered() && notBanned() && request.auth.uid == uid && shape(request.resource.data)
+        && available(resource.data) && linked(request.resource.data);
+      allow delete: if registered() && request.auth.uid == uid
+        && (!existsAfter(voiceSeat(resource.data.kind,resource.data.space,resource.data.slot))
+          || getAfter(voiceSeat(resource.data.kind,resource.data.space,resource.data.slot)).data.session != resource.data.session);
+    }
+    match /{kind}/{space}/seats/{slot} {
+      function shape(r) {
+        return kind in ['voiceWorlds','voiceMatches'] && slot.matches(kind == 'voiceMatches' ? '^[01]$' : '^[0-7]$')
+          && r.keys().hasOnly(['uid','name','nameKey','session','matchId','at','mic'])
+          && r.uid == request.auth.uid && r.session.matches('^[a-f0-9]{32}$') && r.at == request.time
+          && r.mic is bool && (!r.mic || canSpeak())
+          && (kind == 'voiceWorlds' ? r.matchId == '' : r.matchId == get(/databases/$(database)/documents/rooms/$(space)).data.matchId
+              && r.uid == get(/databases/$(database)/documents/rooms/$(space)).data[slot == '0' ? 'host' : 'guest']);
+      }
+      function linked(r) { let m = getAfter(/databases/$(database)/documents/voiceUsers/$(request.auth.uid)).data;
+        return m.kind == kind && m.space == space && m.slot == slot && m.session == r.session; }
+      function claim(r) { return shape(r) && linked(r) && named(r.uid,r.name,r.nameKey) && r.mic == false; }
+      allow get: if registered() && notBanned() && voiceSpace(kind,space);
+      allow list: if registered() && notBanned() && voiceSpace(kind,space) && request.query.limit <= (kind == 'voiceMatches' ? 2 : 8);
+      allow create: if registered() && notBanned() && voiceSpace(kind,space) && claim(request.resource.data);
+      allow update: if registered() && notBanned() && voiceSpace(kind,space)
+        && ((resource.data.uid == request.auth.uid && voiceFresh(resource.data) && shape(request.resource.data) && linked(request.resource.data)
+              && changesOnly(['at','mic']))
+          || (!voiceFresh(resource.data) && claim(request.resource.data)));
+      allow delete: if registered() && kind in ['voiceWorlds','voiceMatches'] && resource.data.uid == request.auth.uid;
+
+      match /signals/{peerSlot} {
+        function pair() {
+          let a = get(voiceSeat(kind,space,slot)).data;
+          let b = get(voiceSeat(kind,space,peerSlot)).data;
+          return slot != peerSlot && a.uid != b.uid && voiceFresh(a) && voiceFresh(b)
+            && request.auth.uid in [a.uid,b.uid] && a.matchId == b.matchId && voiceUnblocked(a.uid,b.uid);
+        }
+        function valid(r) {
+          let a = get(voiceSeat(kind,space,slot)).data;
+          let b = get(voiceSeat(kind,space,peerSlot)).data;
+          return request.auth.uid == a.uid && r.keys().hasOnly(['fromSession','toSession','sdp','type','ice','at'])
+            && r.fromSession == a.session && r.toSession == b.session && r.at == request.time
+            && r.type == (slot < peerSlot ? 'offer' : 'answer') && r.sdp is string && r.sdp.size() <= 32768
+            && r.ice is list && r.ice.size() <= 32;
+        }
+        allow get: if registered() && notBanned() && voiceSpace(kind,space) && pair();
+        allow create, update: if registered() && notBanned() && voiceSpace(kind,space) && pair() && valid(request.resource.data);
+        // Fixed paths are overwritten on the next session; there is no unbounded candidate collection.
+        allow delete: if registered() && notBanned() && kind in ['voiceWorlds','voiceMatches']
+          && get(voiceSeat(kind,space,slot)).data.uid == request.auth.uid;
+      }
+    }
+
     match /socialBlocks/{uid} {
       allow get: if registered() && request.auth.uid == uid;
       allow create, update: if registered() && request.auth.uid == uid

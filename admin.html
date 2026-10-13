@@ -312,7 +312,7 @@ function drawPlayer(){const id=cur,d=PD[id]||{},c=ctlCache[id]||{},co=coinsOf(d)
   $('#sx').onclick=closeSheet;$('#cAdd').onclick=()=>gift(1);$('#cSub').onclick=()=>gift(-1);$('#mBtn').onclick=toggleMute;$('#bBtn').onclick=toggleBan}
 function closeSheet(){$('#sheet').classList.remove('on');cur=null}
 $('#sheet').onclick=e=>{if(e.target.id==='sheet')closeSheet()};
-async function setCtl(id,data){const user=auth.currentUser;if(!user)throw{code:'session'};await C.doc(id).set(Object.assign({by:user.uid,at:Date.now()},data),{merge:true});ctlCache[id]=Object.assign({},ctlCache[id]||{},data)}
+async function setCtl(id,data){const user=auth.currentUser;if(!user)throw{code:'session'};let next;await db.runTransaction(async tx=>{const ref=C.doc(id),snap=await tx.get(ref);next=Object.assign({},snap.exists?snap.data():{},data);tx.set(ref,Object.assign({by:user.uid,at:Date.now()},data),{merge:true});if('mute' in data||'ban' in data)tx.set(db.collection('voiceControls').doc(id),{ban:!!next.ban,mute:!!next.mute,at:firebase.firestore.FieldValue.serverTimestamp()})});ctlCache[id]=next}
 async function gift(sign){const id=cur,input=$('#cAmt');if(!id||input.disabled)return;const a=Math.round(+$('#cAmt').value||0);if(a<=0){toast('اكتب الكمية');return}
   const d=PD[id]||{},name=d.name||'اللاعب';if(sign<0&&!confirm('تخصم '+num(a)+' كوينز من '+name+'؟'))return;
   input.disabled=true;try{await setCtl(id,{gifts:firebase.firestore.FieldValue.arrayUnion({id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),c:sign*a,at:Date.now()})});
