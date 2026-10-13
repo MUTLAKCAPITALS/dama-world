@@ -1,15 +1,25 @@
 // Runs only against a loopback emulator and synthetic identities. Never use production credentials.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
+const {createMockUserToken}=require('@firebase/util');
 const firebase=require('firebase/compat/app');require('firebase/compat/firestore');
 firebase.firestore.setLogLevel('silent');
 if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8181')throw Error('Use the isolated emulator on 127.0.0.1:8181');
 const PROJECT='demo-dama-world-rules',root=path.resolve(__dirname,'../..');
 const rules=fs.readFileSync(process.env.RULES_FILE||path.join(root,'firestore.rules'),'utf8');
 const source=fs.readFileSync(path.join(root,'index.html'),'utf8');
-function fn(name){const start=new RegExp('(?:async )?function '+name+'\\s*\\(').exec(source);assert(start,name);for(let end=source.indexOf('}',start.index);end>=0;end=source.indexOf('}',end+1)){const code=source.slice(start.index,end+1);try{new vm.Script('('+code+')');return code}catch{}}throw Error(name)}
+function fn(name,text=source){const start=new RegExp('(?:async )?function '+name+'\\s*\\(').exec(text);assert(start,name);for(let end=text.indexOf('}',start.index);end>=0;end=text.indexOf('}',end+1)){const code=text.slice(start.index,end+1);try{new vm.Script('('+code+')');return code}catch{}}throw Error(name)}
 function section(a,b){const start=source.indexOf(a),end=source.indexOf(b,start+a.length);assert(start>=0&&end>start);return source.slice(start,end)}
-const OWNER='alomarmutlak@gmail.com';
+const ownerRule=rules.match(/request\.auth\.token\.email == '([^']+)'/);assert(ownerRule,'owner rule fixture');
+const OWNER=ownerRule[1];
+function counter(claims={sub:'admin',email:OWNER,email_verified:true}){
+ const token=claims?createMockUserToken({...claims,firebase:{sign_in_provider:'google.com'}},PROJECT):'';
+ // Spoofing the displayed email cannot grant the token permission in Firestore rules.
+ const user={uid:claims?.sub||'public',email:OWNER,getIdToken:async()=>token};
+ const c=vm.createContext({console,JSON,Number,String,Array,AbortController,encodeURIComponent,setTimeout,clearTimeout,OWNER,auth:{currentUser:user},FB_CFG:{projectId:PROJECT},
+  fetch:(url,opts)=>{assert.equal(url,'https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)/documents:runAggregationQuery');return fetch(url.replace('https://firestore.googleapis.com','http://127.0.0.1:8181'),opts)}});
+ vm.runInContext(fn('cnt',fs.readFileSync(path.join(root,'admin.html'),'utf8')),c);return c;
+}
 const waiting=(extra={})=>({code:'ABCD',protocol:2,matchId:'test-match',host:'h',hostName:'Host',hostPhoto:null,hostRating:1200,guest:null,guestName:'',state:'wait',moves:[],messages:[],voiceEpoch:1,resigned:null,created:1791870000000,...extra});
 const playing=(extra={})=>waiting({guest:'g',guestProtocol:2,guestName:'Guest',guestPhoto:null,guestRating:1300,state:'play',...extra});
 const join=(uid='g')=>({guest:uid,guestProtocol:2,guestName:'Guest',guestPhoto:null,guestRating:1300,state:'play'});
@@ -49,6 +59,12 @@ function client(uid,extra={}){const notices=[],plain=value=>JSON.parse(JSON.stri
  await test('private save: verified owner administration retains read and listing',async()=>{await assertSucceeds(db.admin.doc('users/h').get());await assertSucceeds(db.admin.collection('users').limit(10).get())});
  await test('private save: ordinary list denied',()=>assertFails(db.h.collection('users').get()));
  await test('private save: unverified owner email cannot grant administration',()=>assertFails(db.fakeAdmin.collection('users').get()));
+ await test('counts: owner gets an aggregate without reading private save documents',async()=>{assert.equal(await counter().cnt('users'),2)});
+ await test('counts: numeric and string filters return exact totals',async()=>{const c=counter();assert.equal(await c.cnt('users','seen','GREATER_THAN',100),1);assert.equal(await c.cnt('users','nameKey','GREATER_THAN',''),1);assert.equal(await c.cnt('reports','status','EQUAL','open'),1)},{'users/h':{seen:200,nameKey:'host'},'users/g':{seen:50},'reports/open':{status:'open'},'reports/done':{status:'done'}});
+ await test('counts: empty matching collection returns zero',async()=>{assert.equal(await counter().cnt('reports','status','EQUAL','open'),0)});
+ await test('counts: ordinary Firebase token cannot read administrator counts',()=>assert.rejects(counter({sub:'h',email:'h@example.invalid',email_verified:true}).cnt('users'),e=>e.code==='permission-denied'));
+ await test('counts: unverified owner email remains denied',()=>assert.rejects(counter({sub:'fake-owner',email:OWNER,email_verified:false}).cnt('users'),e=>e.code==='permission-denied'));
+ await test('counts: unauthenticated REST request remains denied',()=>assert.rejects(counter(null).cnt('users')));
  await test('name: owner can reapply same normalized name',()=>assertSucceeds(db.h.doc('names/host').set({uid:'h',name:'HOST',at:2})));
  await test('name: changing reservation owner denied',()=>assertFails(db.h.doc('names/host').set({uid:'g',name:'Host',at:2})));
  await test('name: other player cannot update reservation',()=>assertFails(db.g.doc('names/host').set({uid:'g',name:'Host',at:2})));

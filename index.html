@@ -4562,7 +4562,8 @@ function onlInit(){if(window.DAMA_AUTH&&window.DAMA_AUTH.guest)return Promise.re
     ONL.user=ONL.auth.currentUser;
     return ONL.user})().catch(e=>{ONL.ready=null;throw e})}
 function onlErr(e){const net=/network|sdk|unavailable|failed/i.test((e&&(e.code||e.message))||'');
-  return net?'ما قدرنا نتصل بالسيرفر. الأونلاين يشتغل من رابط اللعبة الخاص (مو من صفحة Claude).':'صار خطأ: '+((e&&(e.code||e.message))||'')}
+  if(e&&e.code==='resource-exhausted')return'الخدمة وصلت حد الاستخدام مؤقتًا؛ جرّب لاحقًا';
+  return net?'ما قدرنا نتصل بالسيرفر. تأكد من اتصال الإنترنت وحاول مرة ثانية.':'صار خطأ: '+((e&&(e.code||e.message))||'')}
 /* ترميز النقلة (Firestore ما يقبل مصفوفات داخل مصفوفات) */
 const onlEnc=a=>a.map(p=>p[0]+''+p[1]).join(',');
 const onlDec=(s,flip)=>s?s.split(',').map(t=>flip?[7-+t[0],7-+t[1]]:[+t[0],+t[1]]):[];
@@ -4625,9 +4626,19 @@ function onlDisconnected(message){if(!ONL.ref)return;const ref=ONL.ref;if(ONL.wa
   if(game&&game.online)game.busy=true;
   onlDlg('<h3>اتصال المباراة توقف</h3><p>'+esc(message)+'</p><button class="pbtn" data-a="retry">إعادة الاتصال</button><button class="gbtn" data-a="leave">مغادرة بدون مكافأة</button>',{
     retry:()=>{if(ONL.ref!==ref)return;closeLayer();ONL.warned=null;onlReconnect()},leave:()=>{closeLayer();if(game&&game.online)leaveMatch();else onlClose(true)}})}
-async function onlBeat(){const ref=ONL.ref,role=ONL.role;if(!ref)return;try{await ref.update({[role+'Seen']:firebase.firestore.FieldValue.serverTimestamp()})}catch(e){if(ONL.ref===ref)onlDisconnected('تعذّر الاتصال؛ النقلة ما تنحسب إلا بعد وصولها للسيرفر')}
-  if(ONL.ref!==ref)return;const r=ONL.room,seen=r&&r[role==='host'?'guestSeen':'hostSeen'];const at=seen&&typeof seen.toMillis==='function'?seen.toMillis():+seen;
-  if(game&&game.online&&!game.over&&at&&Date.now()-at>90000)onlDisconnected('خصمك غير متصل. تقدر تنتظر رجعته أو تغادر بدون مكافأة')}
+async function onlBeat(){const ref=ONL.ref,role=ONL.role,epoch=ONL.epoch;
+  if(!ref||document.hidden||(ONL.room&&['done','closed'].includes(ONL.room.state)))return;
+  if(typeof navigator!=='undefined'&&navigator.onLine===false){onlDisconnected('انقطع الإنترنت؛ أعد الاتصال لاسترجاع المباراة');return}
+  if(ONL.beatRef===ref&&ONL.beatJob)return ONL.beatJob;
+  const now=Date.now();if(ONL.beatRef===ref&&ONL.beatAt&&now-ONL.beatAt<30000)return;
+  ONL.beatRef=ref;ONL.beatAt=now;
+  const job=(async()=>{try{await ref.update({[role+'Seen']:firebase.firestore.FieldValue.serverTimestamp()})}
+    catch(e){if(ONL.ref===ref&&ONL.epoch===epoch&&(!ONL.room||!['done','closed'].includes(ONL.room.state)))onlDisconnected(onlErr(e));return}
+    if(ONL.ref!==ref||ONL.epoch!==epoch)return;const r=ONL.room,seen=r&&r[role==='host'?'guestSeen':'hostSeen'];const at=seen&&typeof seen.toMillis==='function'?seen.toMillis():+seen;
+    if(game&&game.online&&!game.over&&at&&Date.now()-at>90000)onlDisconnected('خصمك غير متصل. تقدر تنتظر رجعته أو تغادر بدون مكافأة')})();
+  ONL.beatJob=job;try{await job}finally{if(ONL.beatJob===job)ONL.beatJob=null}}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)onlBeat()});
+window.addEventListener('online',()=>onlBeat());
 function onlListen(ref){if(ONL.unsub)ONL.unsub();clearInterval(ONL.hb);ONL.ref=ref;const epoch=++ONL.epoch;ONL.chatSeen=new Set();ONL.warned=null;
   ONL.unsub=ref.onSnapshot(snap=>{if(ONL.ref!==ref||ONL.epoch!==epoch)return;
     if(!snap.exists){onlForget();onlDisconnected('الغرفة انقفلت؛ ما انحسب فوز أو خسارة');return}
@@ -4639,7 +4650,7 @@ function onlListen(ref){if(ONL.unsub)ONL.unsub();clearInterval(ONL.hb);ONL.ref=r
     if((r.state==='play'||r.state==='done')&&!ONL.started&&r.host&&r.guest){ONL.started=true;ONL.oppName=ONL.role==='host'?r.guestName:r.hostName;closeLayer();onlStart().catch(e=>{ONL.started=false;onlDisconnected(onlErr(e))})}
     if(game&&game.online&&!game.over){if(r.result){onlApplyResult(r.result);return}onlPump();vcSignal()}
   },e=>{if(ONL.ref===ref&&ONL.epoch===epoch)onlDisconnected(onlErr(e))});
-  ONL.hb=setInterval(onlBeat,15000);onlBeat()}
+  ONL.hb=setInterval(onlBeat,30000);onlBeat()}
 async function onlResume(){if(!requirePlayAccount())return;const saved=onlStored();if(!saved){toast('ما فيه مباراة محفوظة');return}
   try{const ref=ONL.db.collection('rooms').doc(saved.code),snap=await ref.get({source:'server'});if(!snap.exists)throw Error('الغرفة انتهت');const r=snap.data();
     if(r.matchId!==saved.id||![r.host,r.guest].includes(ONL.user.uid)||r.state==='closed')throw Error('الغرفة انتهت');
@@ -4930,6 +4941,8 @@ function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ON
   const sv=Object.assign({},S);delete sv.savedAt;let js=JSON.stringify(sv);if(accBytes(js)+accBytes(S.avatarImg||'')>850000){delete sv.replays;js=JSON.stringify(sv)}
   if(accBytes(js)+accBytes(S.avatarImg||'')>900000){ACC.saveError='save-too-large';accBackup(uid);toast('الحفظ كبير؛ قلّل حجم صورة حسابك وأعد المحاولة. تقدمك باقي بالجهاز',6000);return Promise.resolve(false)}
   if(js===ACC.ackedSave&&!ACC.saveError)return Promise.resolve(true);
+  // A verified server read already confirms identical content; do not rewrite it on every reload.
+  if(js===ACC.baseSave&&!ACC.saveError&&!ACC.lastAttempt){ACC.ackedSave=js;ACC.ackedFp=accFp();return Promise.resolve(true)}
   const token=uid+'-'+t+'-'+Math.random().toString(36).slice(2),expectedRev=ACC.baseRev,expectedSave=ACC.baseSave,fp=accFp(),prior=ACC.lastAttempt;ACC.lastAttempt={id:token,js,at:sv.editAt,fp};
   ACC.uploading=(async()=>{try{
     const ref=ONL.db.collection('users').doc(uid);
