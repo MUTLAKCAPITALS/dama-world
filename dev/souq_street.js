@@ -64,6 +64,18 @@ function sqtFill(ma){if(ma.userData.sqFill)return;ma.userData.sqFill=true;ma.aoM
       .replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n#ifdef USE_ROUGHNESSMAP\n{float sqSun=mix(1.,texture2D(roughnessMap,vUv).b,sqMaskOn);reflectedLight.directDiffuse*=sqSun;reflectedLight.directSpecular*=sqSun;}\n#endif')
       .replace('#include <aomap_fragment>','#include <aomap_fragment>\n{float sqAO=1.;\n#ifdef USE_AOMAP\n sqAO=texture2D(aoMap,vUv2).r;\n#endif\n vec3 nW=inverseTransformDirection(normal,viewMatrix);float up=nW.y*.5+.5;\n reflectedLight.indirectDiffuse+=material.diffuseColor*(sqSky*sqKSky*up*sqAO+sqBounce*sqKB*(.6-.4*nW.y)*mix(1.,sqAO,sqAoB));}')};
   ma.customProgramCacheKey=()=>'souqfill3';ma.needsUpdate=true}
+/* the rest of the Kuwait world (preview only): the same sky + bounce terms as the street, lighter (0.4) and without
+   AO, so a shaded city wall and a shaded souq wall read alike. Measured: open city mean 126 -> ~138 of 255, near-black
+   pixels unchanged (7%), shadows still clearly visible. */
+SQ_LIGHT.world={value:.4};
+function sqtWorldFill(root,skip){const seen=new Set();let n=0;
+  root.traverse(o=>{if(!o.isMesh&&!o.isInstancedMesh)return;for(const m of [].concat(o.material)){if(!m||seen.has(m)||skip.has(m)||!m.isMeshStandardMaterial||m.userData.sqFill||m.userData.wlFill)continue;
+    seen.add(m);m.userData.wlFill=1;const prev=m.onBeforeCompile,pk=m.customProgramCacheKey&&m.customProgramCacheKey!==THREE.Material.prototype.customProgramCacheKey?m.customProgramCacheKey.bind(m):null;
+    m.onBeforeCompile=(sh,r)=>{if(prev)prev.call(m,sh,r);sh.uniforms.wlSky=SQ_LIGHT.sky;sh.uniforms.wlBounce=SQ_LIGHT.bounce;sh.uniforms.wlK=SQ_LIGHT.world;
+      sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 wlSky;uniform vec3 wlBounce;uniform float wlK;')
+        .replace('#include <aomap_fragment>','#include <aomap_fragment>\n{vec3 nW=inverseTransformDirection(normal,viewMatrix);float up=nW.y*.5+.5;reflectedLight.indirectDiffuse+=material.diffuseColor*wlK*(wlSky*.6*up+wlBounce*.45*(.6-.4*nW.y));}')};
+    m.customProgramCacheKey=()=>(pk?pk():'')+'|wl1';m.needsUpdate=true;n++}});
+  return n}
 /* one THREE.LOD per building: LOD0 near, LOD1 (decimated, same atlas) beyond SOUQT.lod1 metres */
 function sqtBuild(){const root=new THREE.Group();root.name='souqTest';
   /* the GLBs are in Blender street coordinates; the street sits at origin[2] metres south in the game */
@@ -97,7 +109,8 @@ function sqtApplyWorld(){if(!SOUQT.on||!W||W.theme.key!=='kw'||!SOUQT.data)retur
     {id:'souqtest_out',name:'المباركية من الخارج (تجربة)',rect:R,spawn:[-17.5,0,129],col:'#c9a36a'}]);
   if(!SOUQT.group)SOUQT.group=sqtBuild();
   W.root.add(SOUQT.group);
-  try{const rg=sqtBuildRoute();if(rg)W.root.add(rg)}catch(e){console.warn('souq route',e)}}
+  try{const rg=sqtBuildRoute();if(rg)W.root.add(rg)}catch(e){console.warn('souq route',e)}
+  try{const skip=new Set();SOUQT.group.traverse(o=>{if(o.material)skip.add(o.material)});SOUQT.stats.worldFill=sqtWorldFill(W.root,skip)}catch(e){console.warn('souq world light',e)}}
 /* raised shop floors and platforms */
 const _sqtGroundY=groundY;groundY=function(x,z){if(SOUQT.on&&SOUQT.data&&sqtIn(x,z)){let h=0;for(const r of SOUQT.data.raised)if(x>r[0]&&x<r[1]&&z>r[2]&&z<r[3]&&r[4]>h)h=r[4];return h}return _sqtGroundY(x,z)};
 /* pergola, shop and passage ceilings keep the third-person camera inside */
@@ -116,8 +129,9 @@ const SQ_ROUTE={
   lamps:[[-12.4,52,-Math.PI/2],[-12.4,70,-Math.PI/2],[-12.4,88,-Math.PI/2],[-12.4,106,-Math.PI/2],[-12.4,124,-Math.PI/2],[-23.9,139,Math.PI/2],[-23.9,151,Math.PI/2]],
   corridor:[-17.5,-12,100,134],
   /* the passage doors stay as approved; walking into one passes through it (fade), both ways */
-  doors:[{out:[-12.7,-12.0],in:[-11.2,-10.75],z:[152.6,154.4],inPos:[-10.2,153.5],outPos:[-13.6,153.5],yawIn:-Math.PI/2,yawOut:Math.PI/2},
-         {out:[21.4,22.1],in:[20.05,20.6],z:[152.6,154.4],inPos:[19.4,153.5],outPos:[22.7,153.5],yawIn:Math.PI/2,yawOut:-Math.PI/2}],
+  /* zones measured in the game: inside stops at x -10.9 / 20.2, outside at -11.65 / 20.95 */
+  doors:[{out:[-12.7,-11.5],in:[-11.2,-10.75],z:[152.6,154.4],inPos:[-10.2,153.5],outPos:[-13.6,153.5],yawIn:-Math.PI/2,yawOut:Math.PI/2},
+         {out:[20.85,22.1],in:[20.05,20.6],z:[152.6,154.4],inPos:[19.4,153.5],outPos:[22.7,153.5],yawIn:Math.PI/2,yawOut:-Math.PI/2}],
   group:null,world:null};
 function sqtBuildRoute(){if(SQ_ROUTE.world===W&&SQ_ROUTE.group)return SQ_ROUTE.group;const wm=MC['walk_kw'];if(!wm||typeof lamp!=='function')return null;
   const st=W.stat,pg=W.poolGrp,tmp=new THREE.Group(),tmpN=new THREE.Group();W.stat=tmp;W.poolGrp=tmpN;

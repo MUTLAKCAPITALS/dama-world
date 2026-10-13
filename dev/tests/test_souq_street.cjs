@@ -26,7 +26,7 @@ function ctx(url,fetchImpl,threeImpl){
     renderer:{capabilities:{getMaxAnisotropy:()=>16},info:{render:{calls:0,triangles:0},memory:{geometries:0,textures:0}},getPixelRatio:()=>1},
     THREE:threeImpl||{}});
   c.window.THREE=c.THREE;
-  vm.runInContext(STUBS+block()+'\n;this.__t={SOUQT,get W(){return W},groundY:(x,z)=>groundY(x,z),souqCeil:(x,z)=>souqCeil(x,z),resolve:(p,r)=>resolve(p,r),buildWorld:k=>buildWorld(k),sqtApplyWorld,get teleported(){return teleported}};',c);
+  vm.runInContext(STUBS+block()+'\n;this.__t={SOUQT,SQ_ROUTE,sqtDoorTick,get passes(){return SQ_DOOR.passes},get W(){return W},groundY:(x,z)=>groundY(x,z),souqCeil:(x,z)=>souqCeil(x,z),resolve:(p,r)=>resolve(p,r),buildWorld:k=>buildWorld(k),sqtApplyWorld,get teleported(){return teleported}};',c);
   return c.__t;
 }
 (async()=>{
@@ -97,6 +97,16 @@ await test('the open shops can be walked into from the spawn point (flood fill w
   for(const [a,b] of [[7,9],[10,12],[13,14.5]])assert(anyIn(a,b,146.2,147.5),'arcade shop '+a);
   assert(anyIn(1.4,3.1,158.2,158.9)&&anyIn(-1.3,.2,158.2,158.9),'C1 glazed shops up to the counter');
   assert(anyIn(19.5,20.3,153,154)&&anyIn(-10.9,-10.2,153,154),'both covered passages up to their doors')});
+await test('the walkway corridor is walkable beyond the old world edge, the open desert past it is not',async()=>{
+  const fetchImpl=u=>u.endsWith('.json')?Promise.resolve({json:()=>Promise.resolve(DATA)}):Promise.reject(new Error('skip'));
+  const Obj=function(){this.children=[];this.position={set(){}};this.rotation={};this.add=o=>this.children.push(o)};
+  const t=ctx('https://x/?souqtest',fetchImpl,{GLTFLoader:function(){},DRACOLoader:function(){},Group:Obj,Mesh:Obj,LOD:Obj,PlaneGeometry:function(){}});
+  t.buildWorld('kw');await settle();
+  const p={x:-14.75,z:120};t.resolve(p,.33);assert.deepEqual([p.x,p.z],[-14.75,120],'on the walkway between the desert and the souq');
+  const q={x:40,z:120};t.resolve(q,.33);assert(q.z<=108||(q.x<=-12.33&&q.x>=-17.17)||q.z>=130.5-1e-9,'off-route desert point is pulled back into a walkable area ('+q.x+','+q.z+')');
+  const c={x:0,z:0};t.resolve(c,.33);assert.deepEqual([c.x,c.z],[0,0],'city untouched');
+  for(const d of t.SQ_ROUTE.doors){assert(d.out[1]<d.in[0]||d.in[1]<d.out[0],'door zones do not overlap');
+    assert(!(d.inPos[0]>=d.in[0]&&d.inPos[0]<=d.in[1])&&!(d.outPos[0]>=d.out[0]&&d.outPos[0]<=d.out[1]),'arrival points are outside the trigger zones (no ping-pong)')}});
 await test('each GLB holds LOD0 + LOD1 with baked textures and stays inside the size budget',()=>{
   let total=0;
   for(const n of ['ground','hero','heroprops','bldB','bldC','endE','endW','street']){
