@@ -424,10 +424,10 @@ function wmpFromURL(){const m=/[#&]world=(kw|sa|bh|in|tr)-([1-9]|10)\b/i.exec(lo
 function wmpInstall(){
   wmpFromURL();
   const st=document.createElement('style');st.textContent='#wmpLabels{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}body.inLobby #wmpLabels,body.inIntro #wmpLabels{display:none}'+
-    '.wlbl{position:absolute;left:0;top:0;pointer-events:auto;display:flex;align-items:center;gap:5px;white-space:nowrap;font:700 12.5px/1.2 inherit;padding:4px 10px;min-height:28px;border-radius:999px;border:1.5px solid #ffd27e;background:rgba(40,24,8,.78);color:#ffe7b0;text-shadow:0 1px 2px #000;will-change:transform;cursor:pointer}'+
+    '.wlbl{position:absolute;left:0;top:0;pointer-events:auto;display:flex;align-items:center;gap:5px;white-space:nowrap;font-weight:700;font-size:12.5px;line-height:1.2;padding:4px 10px;min-height:28px;border-radius:999px;border:1.5px solid #ffd27e;background:rgba(40,24,8,.78);color:#ffe7b0;text-shadow:0 1px 2px #000;will-change:transform;cursor:pointer}'+
     '.wlbl .dot{width:8px;height:8px;border-radius:50%;background:#4fe08a;box-shadow:0 0 6px #4fe08a}'+
     '#wmpInvite{position:fixed;z-index:30;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;padding:10px 14px;border-radius:16px;background:rgba(30,18,6,.94);border:2px solid #ffd27e;color:#fff1d2;box-shadow:0 8px 24px rgba(0,0,0,.5);max-width:92vw}#wmpInvite[hidden]{display:none}#wmpInvite button{min-height:40px}'+
-    '#bWorld b{position:absolute;top:2px;inset-inline-end:4px;min-width:18px;height:18px;border-radius:9px;background:#4fe08a;color:#06210f;font:800 11px/18px inherit;text-align:center;padding:0 4px}#bWorld:not(.on) b{background:#777;color:#fff}#bWorld{position:relative}'+
+    '#bWorld b{position:absolute;top:2px;inset-inline-end:4px;min-width:18px;height:18px;border-radius:9px;background:#4fe08a;color:#06210f;font-weight:800;font-size:11px;line-height:18px;text-align:center;padding:0 4px}#bWorld:not(.on) b{background:#777;color:#fff}#bWorld{position:relative}'+
     '.wmp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #c9933f44}.wmp-row span{flex:1;font-weight:700}.wmp-row button{min-height:38px}#wmpPlayers{max-height:30dvh;overflow:auto}'+
     '.wmp-ch{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:6px 0}.wmp-ch button{min-height:40px;display:flex;flex-direction:column;align-items:center}.wmp-ch button.on{outline:2px solid #ffd27e}.wmp-ch small{font-size:10px;opacity:.8;min-height:1em}'+
     '.onl:has(#wmpStatus) .dlg{max-height:calc(100dvh - 24px - env(safe-area-inset-bottom));overflow:auto}#wmpStatus{font-weight:700}';
@@ -444,8 +444,10 @@ function wmpInstall(){
   const act=$('#actMain');if(act){const prevAct=act.onclick;act.onclick=function(e){if(mode==='explore'&&WMP.near&&WMP.avatars.has(WMP.near)){try{SFX.tap()}catch(_){}wmpCard(WMP.near);return}return prevAct&&prevAct.call(this,e)}}
   const touchEl=$('#touch');if(touchEl){let down=null;touchEl.addEventListener('pointerdown',e=>{down=mode==='explore'?[e.clientX,e.clientY,Date.now(),e.pointerId]:null},true);
     touchEl.addEventListener('pointerup',e=>{if(!down||down[3]!==e.pointerId)return;const d=down;down=null;if(mode!=='explore'||Date.now()-d[2]>350||Math.hypot(e.clientX-d[0],e.clientY-d[1])>12)return;const a=wmpPick(e.clientX,e.clientY);if(a)wmpCard(a.uid)},true)}
+  // Character models that finish downloading later also upgrade real players.
+  const prevUp=skUpgradeAll;skUpgradeAll=function(){const r=prevUp.apply(this,arguments);for(const a of WMP.avatars.values())try{skAttach(a.ch)}catch(e){}return r};
   // Online room start uses the real opponent's character when the match came from a world challenge.
-  const prevStart=onlStart;onlStart=function(){if(!requirePlayAccount())return;const room=ONL.room,opp=WMP.matchOpp;if(opp&&WMP.avatars.has(opp)&&room&&[room.host,room.guest].includes(opp))return wmpStartMatch();return prevStart.apply(this,arguments)};
+  const prevStart=onlStart;onlStart=async function(){if(!requirePlayAccount())return;const room=ONL.room,opp=WMP.matchOpp;if(opp&&WMP.avatars.has(opp)&&room&&[room.host,room.guest].includes(opp))return wmpStartMatch();return prevStart.apply(this,arguments)};
   const prevBegin=beginMatch;beginMatch=function(){if(!requirePlayAccount())return;WMP.voiceWas=typeof VC!=='undefined'&&VC.kind==='voiceWorlds'?VC.channel:null;return prevBegin.apply(this,arguments)};
   const prevLeave=leaveMatch;leaveMatch=async function(){const n=game&&game.npc,real=!!(n&&n.real),voice=WMP.voiceWas;const r=await prevLeave.apply(this,arguments);
     if(real){wmpReleaseBody(n)}WMP.matchOpp=null;WMP.matchTable=-1;WMP.voiceWas=null;
