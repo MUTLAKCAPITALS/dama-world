@@ -35,6 +35,12 @@ await test('the street test is off unless the URL asks for it, and the normal ga
   t.buildWorld('kw');assert.equal(t.groundY(0,150),.12);assert.equal(t.souqCeil(0,150),0);
   const p={x:0,z:500};t.resolve(p,.33);assert.equal(p.z,108,'normal world bounds still apply');
   assert.equal(t.W.boxes.length,0)});
+await test('models load next to the page, or from jsDelivr on a commit-pinned githack preview',()=>{
+  const c=u=>{const x=vm.createContext({location:new URL(u)});vm.runInContext(block().match(/function sqtBase\(\)\{[\s\S]*?\n.*?\n.*?'models\/souq\/'\}/)[0]+';this.b=sqtBase()',x);return x.b};
+  assert.equal(c('https://x.web.app/?souqtest'),'models/souq/');
+  assert.equal(c('https://raw.githack.com/MUTLAKCAPITALS/dama-world/d7237d4/index.html?souqtest=1'),'https://cdn.jsdelivr.net/gh/MUTLAKCAPITALS/dama-world@d7237d4/models/souq/');
+  assert.equal(c('https://raw.githack.com/MUTLAKCAPITALS/dama-world/feat/souq-hero-v4/index.html?souqtest'),'models/souq/');
+  assert.equal(c('https://x/?souqtest&souqbase=https%3A%2F%2Fcdn%2Fm'),'https://cdn/m/')});
 await test('?souqtest turns it on (query or hash)',()=>{
   assert.equal(ctx('https://x/?souqtest=1').SOUQT.on,true);assert.equal(ctx('https://x/#souqtest').SOUQT.on,true)});
 await test('collision, raised shop floors, ceilings and the test zone are applied to the Kuwait world only',async()=>{
@@ -58,6 +64,18 @@ await test('collision data is sane: spawn is clear, the street lane is walkable,
   assert(!inBox(DATA.spawn[0],DATA.spawn[1]),'spawn point is not inside a wall');
   const oz=DATA.origin[2];let free=0,n=0;for(let x=-4;x<=13;x+=.5){n++;if(!inBox(x,oz+3.5))free++}
   assert(free/n>.9,'the alley centreline is walkable end to end ('+free+'/'+n+')')});
+await test('the open shops can be walked into from the spawn point (flood fill with the player radius)',()=>{
+  const R=DATA.rect,r=.33,c=.1,nx=Math.round((R[1]-R[0])/c),nz=Math.round((R[3]-R[2])/c),free=new Uint8Array(nx*nz),seen=new Uint8Array(nx*nz);
+  for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=R[0]+(i+.5)*c,z=R[2]+(j+.5)*c;let ok=x>R[0]+r&&x<R[1]-r&&z>R[2]+r&&z<R[3]-r;
+    if(ok)for(const b of DATA.boxes){const cx=Math.min(Math.max(x,b[0]),b[1]),cz=Math.min(Math.max(z,b[2]),b[3]);if((x-cx)**2+(z-cz)**2<r*r){ok=false;break}}free[j*nx+i]=ok?1:0}
+  const k0=Math.floor((DATA.spawn[1]-R[2])/c)*nx+Math.floor((DATA.spawn[0]-R[0])/c),st=[k0];seen[k0]=1;
+  while(st.length){const k=st.pop(),i=k%nx,j=(k/nx)|0;for(const [a,b] of [[i+1,j],[i-1,j],[i,j+1],[i,j-1]]){if(a<0||b<0||a>=nx||b>=nz)continue;const kk=b*nx+a;if(free[kk]&&!seen[kk]){seen[kk]=1;st.push(kk)}}}
+  const at=(x,z)=>seen[Math.floor((z-R[2])/c)*nx+Math.floor((x-R[0])/c)];
+  const anyIn=(x0,x1,z0,z1)=>{for(let x=x0;x<=x1;x+=.1)for(let z=z0;z<=z1;z+=.1)if(at(x,z))return true;return false};
+  assert(anyIn(-4.3,-3.4,147.5,148.6),'hero spice shop, 1.5 m inside');
+  for(const [a,b] of [[7,9],[10,12],[13,14.5]])assert(anyIn(a,b,146.2,147.5),'arcade shop '+a);
+  assert(anyIn(1.4,3.1,158.2,158.9)&&anyIn(-1.3,.2,158.2,158.9),'C1 glazed shops up to the counter');
+  assert(anyIn(19.5,20.3,153,154)&&anyIn(-10.9,-10.2,153,154),'both covered passages up to their doors')});
 await test('each GLB holds LOD0 + LOD1 with baked textures and stays inside the size budget',()=>{
   let total=0;
   for(const n of ['ground','hero','heroprops','bldB','bldC','endE','endW','street']){

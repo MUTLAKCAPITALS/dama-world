@@ -6125,8 +6125,13 @@ wmpInstall();
 /* Loads the Blender-made street (3 buildings, pergola, paving) as baked GLBs into a separate test area
    south of the Kuwait map, with measured collision, raised shop floors and camera ceilings.
    Nothing here runs unless the page URL contains "souqtest"; the normal game is untouched. */
+/* models load next to the page; on a raw.githack preview pinned to a commit they come from jsDelivr instead
+   (githack proxies large binaries from GitHub slowly or not at all); ?souqbase=<url> overrides both */
+function sqtBase(){const q=/[?&]souqbase=([^&#]+)/.exec(location.search);if(q)return decodeURIComponent(q[1]).replace(/\/?$/,'/');
+  const m=location.hostname==='raw.githack.com'&&/^\/([^/]+)\/([^/]+)\/([0-9a-f]{7,40})\//.exec(location.pathname);
+  return m?'https://cdn.jsdelivr.net/gh/'+m[1]+'/'+m[2]+'@'+m[3]+'/models/souq/':'models/souq/'}
 const SOUQT={on:/(^|[?&#])souqtest\b/.test(location.search+location.hash),
-  base:'models/souq/',files:['ground','hero','heroprops','bldB','bldC','endE','endW','street'],
+  base:sqtBase(),files:['ground','hero','heroprops','bldB','bldC','endE','endW','street'],
   loaderUrl:'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js',
   dracoUrl:'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js',
   dracoPath:'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/',draco:null,
