@@ -203,6 +203,31 @@ async function test(name,fn){await fn();console.log('PASS',name);count++}
     assert.equal(next.stats().entered,true);assert.equal(next.ctx.DAMA_AUTH.requireAccount(),true);
     assert.equal(JSON.parse(next.cloud.save).coins,175);
   });
+  await test('new guest upgrade discards demo social links while preserving earned progress',async()=>{
+    const guest={coins:175,xp:60,social:{friends:['demo'],reqIn:['bot'],reqOut:[],blocked:[]}};
+    const disk=new Map([['dama.auth.intent','new-guest'],['damaworld.guest.v1',JSON.stringify(guest)]]);
+    const w=make({actualAccount:true,disk,user:{uid:'new-user'},cloud:{}});await settle();
+    assert.equal(w.stats().entered,true);const saved=JSON.parse(w.cloud.save);
+    assert.equal(saved.coins,175);assert.equal(saved.xp,60);assert.equal(saved.social,undefined);
+    assert.equal(JSON.parse(disk.get('damaworld.guest.v1')).social.friends[0],'demo');
+  });
+  await test('new registration starts without social links from a previous local save',async()=>{
+    const disk=new Map([['dama.auth.intent','new'],['damaworld.v1',JSON.stringify({coins:150,social:{friends:['demo'],reqIn:['bot']}})]]);
+    const w=make({actualAccount:true,disk,user:{uid:'new-user'},cloud:{}});await settle();
+    assert.equal(w.stats().entered,true);assert.equal(JSON.parse(w.cloud.save).social,undefined);
+    assert.equal(JSON.parse(w.cloud.save).coins,150);
+  });
+  await test('first Google sign-in also starts without inherited demo friends',async()=>{
+    const disk=new Map([['dama.auth.intent','restore'],['damaworld.v1',JSON.stringify({coins:150,social:{friends:['demo'],reqIn:['bot']}})]]);
+    const w=make({actualAccount:true,disk,user:{uid:'google-new'},cloud:{}});await settle();
+    assert.equal(w.stats().entered,true);assert.equal(JSON.parse(w.cloud.save).social,undefined);
+  });
+  await test('returning member preserves their saved social data',async()=>{
+    const saved={coins:340,savedAt:20000,social:{myId:'member',friends:['chosen'],reqIn:[],reqOut:[],blocked:[]}};
+    const disk=new Map([['damaworld.v1',JSON.stringify(saved)],['acc.owner','returning']]);
+    const w=make({disk,user:{uid:'returning'}});await settle();
+    assert.equal(w.stats().entered,true);assert.deepEqual(JSON.parse(disk.get('damaworld.v1')).social,saved.social);
+  });
   await test('guest upgrade storage failure retains its intent and cannot upload an unrelated local save',async()=>{
     const disk=new Map([['dama.auth.intent','new-guest'],['damaworld.v1','{"coins":999}'],['damaworld.guest.v1','{"coins":175}']]);
     const w=make({actualAccount:true,disk,user:{uid:'new-user'},cloud:{},failStorage:true});await settle();

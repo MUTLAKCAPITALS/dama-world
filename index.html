@@ -1406,7 +1406,7 @@ function endGame(res,why){if(game.over)return;const endedId=game.id;game.over=tr
   let title,coins=0;if(res>0){title='فزت!';coins=50+game.capMe*2;S.wins++;addXP(60);SFX.win();completeQuest('win');!game.online&&oppSay('مبروك، تستاهل',3000)}else if(res<0){title='خسرت هذه المرة';coins=10;S.losses++;addXP(15);SFX.lose();!game.online&&oppSay('لعبة حلوة، مرة ثانية؟',3000)}else{title='تعادل';coins=25;S.draws++;addXP(25)}
   addCoins(coins);const rkH=onMatchEnd(res);persist();for(const s of specs){s.ch.userData.action=Math.random()<.5?'cheer':'clap';s.ch.userData.actT=2.2;s.line=res>0?pick(['مبروك!','تستاهل','فوز مستحق']):pick(['حظ أوفر','قريبة!','المرة الجاية']);s.sayT=2.5}
   setStatus(why);
-  setTimeout(()=>{if(!game||game.id!==endedId)return;showLayer('<div class="scrim"><div class="card dlg"><span class="tag">'+esc(why)+'</span><h3>'+title+'</h3><p>أكلت '+game.capMe+' · أكل الخصم '+game.capOpp+' · '+game.plies+' نقلة · '+specs.filter(s=>s.state==='watch').length+' متفرّج</p><div class="coins glass" style="font-size:18px">'+ic('coin')+'+'+coins+'</div>'+rkH+'<div class="row"><button class="pbtn" data-a="again">'+ic('board')+'مباراة أخرى</button><button class="gbtn" data-a="back">العودة للتجوّل</button></div></div></div>',
+  setTimeout(()=>{if(!game||game.id!==endedId)return;showLayer('<div class="scrim"><div class="card dlg"><div class="result-body"><span class="tag">'+esc(why)+'</span><h3>'+title+'</h3><p>أكلت '+game.capMe+' · أكل الخصم '+game.capOpp+' · '+game.plies+' نقلة · '+specs.filter(s=>s.state==='watch').length+' متفرّج</p><div class="coins glass" style="font-size:18px">'+ic('coin')+'+'+coins+'</div>'+rkH+'</div><div class="row result-actions"><button class="pbtn" data-a="again">'+ic('board')+'مباراة أخرى</button><button class="gbtn" data-a="back">العودة للتجوّل</button></div></div></div>',
    {again:()=>{closeLayer();rematch()},back:()=>{closeLayer();leaveMatch()}})},1300)}
 function cleanupBoard(){clearMarks();for(const m of game.meshes)if(m)scene.remove(m);scene.children.filter(o=>o.userData&&o.userData.side!=null).forEach(o=>scene.remove(o))}
 async function rematch(){if(!requirePlayAccount())return;const t=game.table,n=game.npc;game.keepSpecs=specs.slice();cleanupBoard();$('#mh').hidden=true;mode='toMatch';
@@ -2696,7 +2696,7 @@ function presText(p){return p.s==='on'?'متصل · في اللوبي':p.s==='ma
 function presCol(p){return p.s==='on'?'#5ac58b':p.s==='match'?'#e2b04a':'#7d7468'}
 const pById=id=>PLAYERS.find(p=>p.id===id);
 
-function socState(){if(!S.social){const ids=PLAYERS.map(p=>p.id);S.social={myId:String(50000000+Math.floor(Math.random()*9999999)),friends:[ids[0],ids[1],ids[10],ids[15],ids[21]],reqIn:[ids[2],ids[11],ids[24]],reqOut:[],blocked:[],lastReq:Date.now()};persist()}return S.social}
+function socState(){if(!S.social){S.social={myId:String(50000000+Math.floor(Math.random()*9999999)),friends:[],reqIn:[],reqOut:[],blocked:[],lastReq:Date.now()};persist()}return S.social}
 function socBadge(){return socState().reqIn.length}
 function avatarHTML(p,sz){sz=sz||38;const pr=presOf(p.id);return '<span class="sav" style="width:'+sz+'px;height:'+sz+'px;background:'+p.col+'">'+esc(p.name[0])+'<i style="background:'+presCol(pr)+'"></i></span>'}
 
@@ -2767,7 +2767,7 @@ function chPush(k,msg){const L=CHAT.ch[k]||(CHAT.ch[k]=[]);L.push(msg);if(L.leng
 function chBotLine(){const so=socState();const pool=PLAYERS.filter(p=>!so.blocked.includes(p.id)&&presOf(p.id).s!=='off');const p=pick(pool);let text=pick(CH_LINES);
   if(Math.random()<.12&&S.name)text=pick(['@'+S.name+' تبي تلعب؟','@'+S.name+' هلا والله','@'+S.name+' شفتك باللوبي 👀']);return{from:p.id,text,t:Date.now()}}
 function chStart(){if(CHAT.timer)return;for(let i=0;i<6;i++)CHAT.ch.world.push(chBotLine());CHAT.ch.world.unshift({sys:true,text:'مرحباً بك في الدردشة العالمية · كن محترماً — الرسائل هنا محاكاة في هذا النموذج',t:Date.now()});
-  const tick=()=>{chPush('world',chBotLine());if(S.clan&&S.clan.members.length&&Math.random()<.3){const m=pById(pick(S.clan.members));if(m)chPush('clan',{from:m.id,text:pick(['يا جماعة نبي نوصل هدف الأسبوع 💪','منو فاضي لمباراة؟','مبروك على الفوز 🔥','الليلة قعدة بالمباركية','لا تنسون بطولة الجمعة','أحد يبي يتمرن معاي؟']),t:Date.now()})}if(Math.random()<.04)socIncomingRequest();CHAT.timer=setTimeout(tick,rnd(3500,8000))};CHAT.timer=setTimeout(tick,4000)}
+  const tick=()=>{chPush('world',chBotLine());if(S.clan&&S.clan.members.length&&Math.random()<.3){const m=pById(pick(S.clan.members));if(m)chPush('clan',{from:m.id,text:pick(['يا جماعة نبي نوصل هدف الأسبوع 💪','منو فاضي لمباراة؟','مبروك على الفوز 🔥','الليلة قعدة بالمباركية','لا تنسون بطولة الجمعة','أحد يبي يتمرن معاي؟']),t:Date.now()})}CHAT.timer=setTimeout(tick,rnd(3500,8000))};CHAT.timer=setTimeout(tick,4000)}
 function chReply(k,text){const t=text.replace(/[؟?]/g,'?');let cat='gen';if(/سلام|هلا|مرحب|هاي/.test(t))cat='greet';else if(/\?|كيف|وين|شلون/.test(t))cat='q';else if(/نلعب|تحدي|يلعب|العب|فريق/.test(t))cat='play';
   if(k==='world'){const n=Math.random()<.8?1+Math.floor(Math.random()*2):0;for(let i=0;i<n;i++)setTimeout(()=>{const m=chBotLine();m.text=pick(CH_REPLIES[cat]);if(Math.random()<.5)m.text='@'+S.name+' '+m.text;chPush('world',m)},rnd(1200,4200)*(i+1))}
   else if(k==='clan'&&S.clan){const ms=S.clan.members.slice(0,4);ms.forEach((id,i)=>{if(Math.random()<.6)setTimeout(()=>chPush('clan',{from:id,text:pick(CH_REPLIES[cat]),t:Date.now()}),rnd(900,2800)*(i+1))})}
@@ -2826,8 +2826,6 @@ function socAct(k,id,b){const so=socState(),p=id&&pById(id);
   socRender();hydrateIcons($('#socB'))}
 function socSendReq(id){const so=socState(),p=pById(id);if(!p||so.reqOut.some(r=>r.id===id)||so.friends.includes(id))return;so.reqOut.push({id,t:Date.now()});persist();toast('تم إرسال طلب صداقة إلى '+p.name,1800);
   setTimeout(()=>{const s2=socState();if(!s2.reqOut.some(r=>r.id===id))return;s2.reqOut=s2.reqOut.filter(r=>r.id!==id);if(Math.random()<.85){s2.friends.push(id);PRES[id]={s:'on'};toast(p.name+' قبل طلب صداقتك 🎉',2200);SFX.win&&SFX.win()}persist();if($('#socB'))socRender();if(LOBBY.on&&mode==='lobby')lbBuildUI()},rnd(3500,9000))}
-function socIncomingRequest(){const so=socState();if(S.safety&&(S.safety.reqFrom==='none'||(S.safety.reqFrom==='fof'&&Math.random()<.6)))return;const c=PLAYERS.filter(p=>!so.friends.includes(p.id)&&!so.reqIn.includes(p.id)&&!so.reqOut.some(r=>r.id===p.id)&&!so.blocked.includes(p.id));if(!c.length||so.reqIn.length>=6)return;const p=pick(c);so.reqIn.push(p.id);persist();
-  if(LOBBY.on||mode==='explore')toast('طلب صداقة جديد من '+p.name,2200);if($('#socB'))socRender();if(LOBBY.on&&mode==='lobby')lbBuildUI()}
 function openProfile(id){const p=pById(id);if(!p)return;const so=socState(),tr=tierOf(p.rating),pr=presOf(id),fr=so.friends.includes(id);
   const back=$('#socB')?()=>openSocial(socTab):CHAT.open?()=>openChat(CHAT.cur):null;
   showLayer('<div class="scrim" data-x="1"><div class="card" id="sheet" style="max-width:420px"><div class="sh-h"><h2>الملف الشخصي</h2><button class="ibtn" data-a="x">'+ic('close')+'</button></div><div class="sh-b"><div class="pcard">'+avatarHTML(p,64)+'<div><b style="font:700 19px var(--f-display);color:var(--sand)">'+esc(p.name)+'</b><div style="font-size:12px;color:var(--muted)">رقم '+p.id+' · '+esc(p.from)+'</div><div style="font-size:12px;margin-top:4px"><span class="sav" style="display:none"></span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+presCol(pr)+';margin-inline-end:5px"></i>'+presText(pr)+'</div>'+(p.title?'<div style="font-size:12px;color:var(--brass-hi);margin-top:3px">«'+p.title+'»</div>':'')+'</div></div>'+
@@ -3320,7 +3318,7 @@ onMatchEnd=function(res){const g=game;let html=_onMatchEnd7(res);let ex=[];
   clanWeek();if(S.clan){const p=res>0?10:res<0?3:5;S.clan.myPts=(S.clan.myPts||0)+p;S.clan.pts+=p;ex.push('+'+p+' نقطة لديوانية '+S.clan.name);clanWeekSave()}
   let btn='';const tg=g&&g.npc&&g.npc.vsTag;if(tg){delete g.npc.vsTag;if(tg==='tour'){ex.push(tourResult(res));btn='<button class="pbtn" onclick="tourContinue()">'+ic('trophy')+'متابعة البطولة</button>'}else if(tg==='room')ex.push('مباراة الغرفة الخاصة انتهت')}
   persist();
-  return html+(ex.length?'<div class="v7ex">'+ex.map(esc).join(' · ')+'</div>':'')+'<div class="row" style="margin-top:6px">'+btn+'<button class="gbtn" onclick="v7ReplayFromMatch()">'+ic('replay')+'الإعادة والتحليل</button></div>'};
+  return html+(ex.length?'<div class="v7ex">'+ex.map(esc).join(' · ')+'</div>':'')+'<div class="row result-tools">'+btn+'<button class="gbtn" onclick="v7ReplayFromMatch()">'+ic('replay')+'الإعادة والتحليل</button></div>'};
 
 (function(){const st=document.createElement('style');st.textContent=`
 .v7ex{margin-top:6px;padding:5px 8px;font-size:11.5px;line-height:1.5;color:var(--sand);background:rgba(255,255,255,.06)}
@@ -3794,6 +3792,18 @@ lbBuildUI=function(){let el=$('#lobby');if(!el){el=document.createElement('div')
 @media (max-height:380px){.lb2-rnd .c.im,.lb2-rnd .c.im .gi{width:46px;height:46px}.lb2-ic.im .gi{width:36px;height:36px}}
 `;document.head.appendChild(st)})();
 
+/* Mobile overlay layout: use the visible viewport, independent of the scaled lobby toolbar. */
+function uiViewport(){const v=window.visualViewport;return{left:v?v.offsetLeft:0,top:v?v.offsetTop:0,width:v?v.width:innerWidth,height:v?v.height:innerHeight}}
+function lbMoreBounds(v,b){const width=Math.min(220,Math.max(0,v.width-24));const top=Math.max(v.top+8,Math.min(b.bottom+8,v.top+v.height-64));return{left:Math.max(v.left+12,Math.min(b.right-width,v.left+v.width-width-12)),top,width,height:Math.max(44,v.top+v.height-top-12)}}
+function lbMorePosition(){const m=$('#lbMoreM'),b=$('#lbMore');if(!m||m.hidden||!b)return;const r=lbMoreBounds(uiViewport(),b.getBoundingClientRect());m.style.left=r.left+'px';m.style.top=r.top+'px';m.style.width=r.width+'px';m.style.setProperty('--more-height',r.height+'px')}
+function lbMoreToggle(open,restoreFocus){const m=$('#lbMoreM'),b=$('#lbMore');if(!m||!b)return;open=open==null?m.hidden:!!open;m.hidden=!open;b.setAttribute('aria-expanded',String(open));if(open)lbMorePosition();else if(restoreFocus)b.focus()}
+function matchResultLayout(){const dialog=$('#layer .r22 .dlg');if(!dialog)return;const footer=dialog.querySelector('.result-actions'),tools=dialog.querySelector('.result-tools');if(footer&&tools)footer.insertBefore(tools,footer.firstChild);dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');const title=dialog.querySelector('h3');if(title){title.id='matchResultTitle';dialog.setAttribute('aria-labelledby',title.id)}uiOverlayViewport()}
+function uiOverlayViewport(){const v=uiViewport(),r=$('#layer .r22');if(r){r.style.top=v.top+'px';r.style.left=v.left+'px';r.style.width=v.width+'px';r.style.height=v.height+'px';r.classList.toggle('compact-result',v.height<=420)}lbMorePosition()}
+document.addEventListener('pointerdown',e=>{const m=$('#lbMoreM');if(m&&!m.hidden&&!e.target.closest('#lbMoreM,#lbMore'))lbMoreToggle(false)},true);
+document.addEventListener('keydown',e=>{const m=$('#lbMoreM');if(e.key==='Escape'&&m&&!m.hidden){lbMoreToggle(false,true);e.preventDefault()}});
+addEventListener('resize',uiOverlayViewport);
+if(window.visualViewport){window.visualViewport.addEventListener('resize',uiOverlayViewport);window.visualViewport.addEventListener('scroll',uiOverlayViewport)}
+
 /* ================= v14: ترتيب اللوبي حسب التصميم المرجعي (الخلفية والشخصية بدون أي تغيير) ================= */
 function lb4Friends(){const so=socState();const rank={on:0,match:1,off:2};
   return so.friends.map(pById).filter(Boolean).sort((a,b)=>(rank[presOf(a.id).s]??2)-(rank[presOf(b.id).s]??2)).slice(0,innerHeight<330?2:innerHeight<460?3:4)}
@@ -3812,12 +3822,12 @@ lbBuildUI=function(){let el=$('#lobby');if(!el){el=document.createElement('div')
     <span class="sep"></span>
     <button class="l4-ib pe" id="lbMail" aria-label="البريد"><img class="ii" src="ui/mail.webp" alt="">${dot(!S.loginClaimed)}</button>
     <button class="l4-ib pe" id="lbChest" aria-label="التنبيهات والجوائز"><img class="ii" src="ui/bell.webp" alt="">${dot(chestReady())}</button>
-    <button class="l4-ib pe" id="lbMore" aria-label="المزيد"><b>⋯</b></button>
+    <button class="l4-ib pe" id="lbMore" aria-label="المزيد" aria-expanded="false" aria-controls="lbMoreM"><b>⋯</b></button>
     <button class="l4-ib pe" id="lbSet" aria-label="الإعدادات"><img class="ii" src="ui/settings.webp" alt=""></button>
-    <div class="l4-menu" id="lbMoreM" hidden>
+  </div>
+    <div class="l4-menu" id="lbMoreM" aria-label="خيارات إضافية" hidden>
       <button data-o="look">${gi('look')}المظهر</button><button id="lbNavTour">${gi('play')}البطولات</button><button id="lbNavRoom">${ic('door')}غرفة خاصة</button>
       <button id="lbEmo">${gi('emote')}الحركات</button><button id="lbQuick">${gi('quick')}تحدٍّ سريع</button><button id="lbSnd">${ic('speaker')}الصوت</button></div>
-  </div>
   <div class="l4-left">
     <button class="l4-card pe" id="lbSeason"><span class="th"><img src="ui/season.webp" alt=""></span><span class="t"><b>الموسم</b><small>${daysLeft} يوم باقي</small></span>${ic('chev')}${pc?'<i class="dot"></i>':''}</button>
     <button class="l4-card pe" data-o="games:rank"><span class="th"><img src="ui/rank.webp" alt=""><b class="rn">${TIERS.indexOf(tr)+1}</b></span><span class="t"><b>التصنيف</b><small>${tr[1]} · ${S.rating||1000}</small></span>${ic('chev')}</button>
@@ -3825,7 +3835,7 @@ lbBuildUI=function(){let el=$('#lobby');if(!el){el=document.createElement('div')
   </div>
   <div class="l4-fr">
     <button class="hd pe" id="lbFriends">${ic('chev')}<b>الأصدقاء</b>${ic('users')}${sb?'<i class="bd">'+sb+'</i>':''}</button>
-    ${fr.map(p=>{const s=presOf(p.id).s;return '<button class="f pe" data-pid="'+p.id+'"><span class="t"><b>'+esc(p.name)+'</b><small class="'+s+'">'+presTx(s)+'</small></span><span class="av" style="background:'+p.col+'">'+esc(p.name[0])+'<i class="'+s+'"></i></span></button>'}).join('')}
+    ${fr.map(p=>{const s=presOf(p.id).s;return '<button class="f pe" data-pid="'+p.id+'"><span class="t"><b>'+esc(p.name)+'</b><small class="'+s+'">'+presTx(s)+'</small></span><span class="av" style="background:'+p.col+'">'+esc(p.name[0])+'<i class="'+s+'"></i></span></button>'}).join('')}${fr.length?'':'<p class="l4-empty">ما عندك أصدقاء بعد</p>'}
     <button class="add pe" id="lbSoc" aria-label="إضافة صديق">${ic('plus')}${ic('users')}</button>
   </div>
   <button class="l4-chat pe" id="lbChat">${ic('chev')}<span class="tt"><b>المحادثة العالمية</b><span id="lbChatT"></span></span>${ic('chat')}<i class="u" id="lbChatU" hidden></i></button>
@@ -3840,24 +3850,24 @@ lbBuildUI=function(){let el=$('#lobby');if(!el){el=document.createElement('div')
   </div>
   <div id="lbTags"></div>`;
   const tags=$('#lbTags');tags.innerHTML='<div class="lb-tag me" id="lbTagMe">'+esc(S.name)+'</div>'+LB_SLOTS.map((s,i)=>LOBBY.team[i]?'<div class="lb-tag" id="lbTag'+i+'"'+(LOBBY.team[i].id?' data-pid="'+LOBBY.team[i].id+'"':'')+'>'+esc(LOBBY.team[i].name)+'<span class="x" data-k="'+i+'">✕</span></div>':'<button class="lb-slot pe" id="lbTag'+i+'" data-k="'+i+'" aria-label="دعوة صديق">'+ic('plus')+'</button>').join('');
-  const menu=()=>$('#lbMoreM');
-  const on=(id,f)=>{const b=$(id);if(b)b.onclick=e=>{lbGesture();if(id!=='#lbMore'){const m=menu();if(m)m.hidden=true}f(e)}};
+
+  const on=(id,f)=>{const b=$(id);if(b)b.onclick=e=>{lbGesture();if(id!=='#lbMore')lbMoreToggle(false);f(e)}};
   on('#lbStart',()=>{LOBBY.mm?lbCancelMM():lbStartMM()});on('#lbMode',()=>{if(!LOBBY.mm)lbDestPicker()});on('#lbQuick',()=>{if(!LOBBY.mm)lbStartMM(true)});
   on('#lbSeason',()=>openPass());on('#lbChest',()=>openChest());on('#lbEmo',()=>lbEmote());on('#lbSnd',()=>lbSound());on('#lbSet',()=>lbSheet('set'));
   on('#lbProf',()=>lbRename());on('#lbCoins',()=>lbSheet('shop','coins'));
   on('#lbMail',()=>{checkLogin();if(!S.loginClaimed)showLogin(()=>{mode='lobby';lbBuildUI()});else toast('لا رسائل جديدة — رجع بكرة للمكافأة',2400)});
   on('#lbFriends',()=>openSocial(sb?'req':'friends'));on('#lbSoc',()=>openSocial('add'));
   on('#lbChat',()=>openChat('world'));on('#lbNavClan',()=>openClan());on('#lbNavTour',()=>openTour());on('#lbNavRoom',()=>openRoom());
-  on('#lbMore',e=>{e.stopPropagation();const m=menu();m.hidden=!m.hidden});
+  on('#lbMore',e=>{e.stopPropagation();lbMoreToggle()});
   el.querySelectorAll('.l4-fr .f').forEach(b=>b.onclick=()=>{lbGesture();openProfile(b.dataset.pid)});
-  el.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{lbGesture();const m=menu();if(m)m.hidden=true;const[k,t]=b.dataset.o.split(':');lbSheet(k,t)});
+  el.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{lbGesture();lbMoreToggle(false);const[k,t]=b.dataset.o.split(':');lbSheet(k,t)});
   tags.querySelectorAll('.lb-slot').forEach(b=>b.onclick=()=>{lbGesture();openSocial('friends')});
   tags.querySelectorAll('.x').forEach(b=>b.onclick=e=>{e.stopPropagation();lbKick(+b.dataset.k)});
   lbTicker();hydrateIcons&&hydrateIcons(el);
-  const stg=$('#lbStage');stg.onpointerdown=e=>{lbGesture();const m=menu();if(m)m.hidden=true;LOBBY.drag={x:e.clientX,r:LOBBY.tRot};stg.setPointerCapture(e.pointerId)};
+  const stg=$('#lbStage');stg.onpointerdown=e=>{lbGesture();lbMoreToggle(false);LOBBY.drag={x:e.clientX,r:LOBBY.tRot};stg.setPointerCapture(e.pointerId)};
   stg.onpointermove=e=>{if(LOBBY.drag)LOBBY.tRot=LOBBY.drag.r+(e.clientX-LOBBY.drag.x)*.012};
   stg.onpointerup=stg.onpointercancel=()=>{LOBBY.drag=null};lbTagsPos()};
-function lb4Scale(el){el=el||$('#lobby');if(!el)return;const k=Math.max(.55,Math.min(1,innerHeight/390,innerWidth/844));el.style.setProperty('--s',k.toFixed(3))}
+function lb4Scale(el){el=el||$('#lobby');if(!el)return;const k=Math.max(.55,Math.min(1,innerHeight/390,innerWidth/844));el.style.setProperty('--s',k.toFixed(3));lbMorePosition()}
 addEventListener('resize',()=>{if(LOBBY.on&&$('#lobby.lb4'))lb4Scale()});
 const _enterLobby15=enterLobby;enterLobby=function(f){window.LB4E=true;return _enterLobby15(f)};
 /* سطر الدردشة: آخر رسالة بخط صغير تحت العنوان */
@@ -4487,12 +4497,33 @@ const _showLayer22=showLayer;
 showLayer=function(html,acts,onClose){
   if(M22.res!=null&&/data-a="again"/.test(html)){const res=M22.res;M22.res=null;const win=res>0,cls=win?'win':res<0?'lose':'draw';
     const capMe=game?game.capMe:0,stars=win?(capMe>=10?3:capMe>=6?2:1):0;
-    html=html.replace('<div class="scrim">','<div class="scrim r22 '+cls+'">').replace('<div class="card dlg">','<div class="card dlg"><div class="rays"></div>'+(win?'<div class="crn">👑</div>':'')+'');
+    html=html.replace('<div class="scrim">','<div class="scrim r22 '+cls+'">').replace('<div class="result-body">','<div class="result-body"><div class="rays"></div>'+(win?'<div class="crn">👑</div>':'')+'');
     html=html.replace('</h3>','</h3><div class="stars">'+[0,1,2].map(i=>'<i class="'+(i<stars?'on':'')+'"></i>').join('')+'</div>');
-    const r=_showLayer22.call(this,html,acts,onClose);
+    const r=_showLayer22.call(this,html,acts,onClose);matchResultLayout();
     if(win){const L=$('#layer');const cols=['#ffd76a','#fff2c0','#e3a43e','#ffffff','#c9302c','#2a8a4a'];for(let i=0;i<60;i++){const c=document.createElement('i');c.className='cf';c.style.left=(Math.random()*100)+'vw';c.style.background=pick(cols);c.style.animationDuration=(2.2+Math.random()*2)+'s';c.style.animationDelay=(Math.random()*.8)+'s';c.style.transform='rotate('+(Math.random()*360)+'deg)';const sc=L.querySelector('.r22');(sc||L).appendChild(c)}}
     return r}
   return _showLayer22.apply(this,arguments)};
+
+(function(){const st=document.createElement('style');st.id='mobileOverlayStyles';st.textContent=`
+/* Mobile overlay fixes: independent menu layer, scrollable result details, pinned actions. */
+#lobby.lb4 .l4-menu{position:fixed;z-index:12;right:auto;box-sizing:border-box;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;max-height:calc(var(--more-height,70dvh) - env(safe-area-inset-bottom,0px));min-width:0;transform:none;filter:none;background:rgba(13,20,36,.98)}
+#lobby.lb4 .l4-menu button{box-sizing:border-box;flex:none;min-height:44px;width:100%;font-size:14px;touch-action:manipulation}
+#lobby.lb4 .l4-empty{margin:8px 2px;padding:4px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6}
+.scrim.r22{box-sizing:border-box;inset:auto;top:0;left:0;width:100%;height:100dvh;padding:calc(env(safe-area-inset-top,0px) + 10px) calc(env(safe-area-inset-right,0px) + 12px) calc(env(safe-area-inset-bottom,0px) + 14px) calc(env(safe-area-inset-left,0px) + 12px);overflow:hidden;touch-action:pan-y}
+.scrim.r22 .card.dlg{box-sizing:border-box;width:min(620px,100%);min-width:0;min-height:0;max-height:100%;overflow:hidden;align-items:stretch;gap:0;padding:10px 12px;border-width:12px;background:#0d1829}
+.r22 .result-body{position:relative;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;align-items:center;gap:10px;padding:4px 6px 12px}
+.r22 .result-body>*{flex-shrink:0}
+.r22 .result-actions{flex:none;display:flex;flex-wrap:wrap;gap:8px;padding:10px 0 0;border-top:1px solid var(--line);background:#0d1829}
+.r22 .result-actions .result-tools{display:contents}
+.r22 .result-actions button{box-sizing:border-box;flex:1 1 140px;min-height:48px;margin:0;padding:8px 12px;font-size:14px;line-height:1.4;touch-action:manipulation}
+.r22.compact-result .card.dlg{padding:4px 8px;border-width:10px}
+.r22.compact-result .result-body{gap:5px;padding:2px 4px 8px}
+.r22.compact-result .dlg h3{font-size:26px;line-height:1.35}
+.r22.compact-result .crn{font-size:24px!important}
+.r22.compact-result .stars{margin:0;gap:4px}
+.r22.compact-result .stars i{width:18px;height:18px}
+.r22.compact-result .result-actions{padding-top:8px}
+`;document.head.appendChild(st)})();
 
 /* ================= v23: أصوات حيّة — بحر الكورنيش، نوارس، زحمة السوق، خطوات، أزرار ================= */
 const SND23={step:0,lastPh:0};
@@ -4923,6 +4954,8 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   ACC.adoptKey=uid+':'+((d&&d.saveId)||'legacy')+':'+(+(d&&d.saveRev)||0)+':'+cloudAt;ACC.baseRev=+(d&&d.saveRev)||0;ACC.baseSave=(d&&d.save)||null;ACC.baseId=(d&&d.saveId)||null;ACC.saveError=null;ACC.conflict=false;
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
   if(d&&d.save&&(restore||changed||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  /* A server-confirmed first save starts a member without inherited demo friendships (email or Google). */
+  if(!(d&&d.save)&&S.social){delete S.social;accRaw()}
   try{localStorage.setItem('acc.owner',uid);localStorage.setItem('acc.base.'+uid,JSON.stringify({rev:ACC.baseRev,id:ACC.baseId,at:cloudAt}))}catch(e){}
   accPendSet(null);
   if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
