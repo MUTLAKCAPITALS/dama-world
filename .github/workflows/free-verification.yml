@@ -26,4 +26,13 @@ jobs:
       - name: Verify game behavior and traffic limits
         run: node dev/tests/run.cjs
       - name: Verify Firestore rules and aggregate counts
-        run: npm test --prefix dev/firebase
+        run: |
+          set -o pipefail
+          npm test --prefix dev/firebase 2>&1 | tee rules-output.txt
+      - name: Report failing emulator checks as annotations
+        if: failure()
+        run: |
+          grep -E 'FAIL|Error|timed out|WORLD STATE|RTC STATE|passed' rules-output.txt | tail -n 60 | cut -c1-900 > failures.txt || true
+          body=$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' failures.txt)
+          echo "::error title=Emulator failures::${body}"
+          exit 1
