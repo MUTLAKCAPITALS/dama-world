@@ -39,13 +39,13 @@ function accErr(e){const c=(e&&e.code)||'';return({'auth/email-already-in-use':'
   'auth/unauthorized-domain':'رابط اللعبة مو مضاف بإعدادات Firebase','auth/operation-not-allowed':'هالطريقة مو مفعّلة بإعدادات Firebase','auth/network-request-failed':'ما فيه اتصال بالسيرفر','auth/too-many-requests':'محاولات كثيرة، جرّب بعد شوي'})[c]||onlErr(e)}
 
 /* ---------- بداية التشغيل ---------- */
-async function accBoot(){try{await onlInit()}catch(e){return}const u=ONL.auth.currentUser;ACC.anon=!!u.isAnonymous;
+async function accBoot(){try{await onlInit()}catch(e){if(window.DAMA_AUTH)throw e;return}const u=ONL.auth.currentUser;if(window.DAMA_AUTH&&(!u||u.isAnonymous||u.uid!==window.DAMA_AUTH.uid)){window.DAMA_AUTH.syncResult('skip');return 'skip'}ACC.anon=!!u.isAnonymous;
   if(ACC.anon){if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));if(S.name!==S.guestName){if(!/^ضيف/.test(S.name||''))S.wantName=S.name;S.name=S.guestName}ACC.name=S.name;ACC.ready=true;
     if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now()}accRaw();accUI();return}
-  ACC.ready=true;ACC.name=S.name;accUI();await accSync({uid:u.uid})}
+  ACC.ready=true;ACC.name=S.name;accUI();return await accSync({uid:u.uid})}
 /* نقرأ حفظ الحساب من السيرفر نفسه (مو من الكاش)، ونقارنه بأساس المقارنة المحلي.
    ما نفتح باب الرفع قبل ما تنجح القراءة. لو فشلت: التقدم المحلي يبقى، وما نكتب شي، ونعيد المحاولة بنفس السياق. */
-async function accSync(ctx){const r=await accSync0(ctx);ACC.lastSync=r;return r}
+async function accSync(ctx){const r=await accSync0(ctx);ACC.lastSync=r;if(window.DAMA_AUTH)window.DAMA_AUTH.syncResult(r);return r}
 async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{};const u=ONL.auth.currentUser;
   if(!u||u.isAnonymous)return 'skip';if(ctx.uid&&ctx.uid!==u.uid){ACC.pendingCtx=null;return 'skip'}
   const uid=u.uid,restore=!!ctx.restore||accPendGet()===uid;ACC.synced=false;ACC.pendingCtx={uid,restore,retryMs:ctx.retryMs};
@@ -57,7 +57,7 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
   if(d&&d.save&&(restore||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
   accPendSet(null);
-  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;setTimeout(()=>accNameDlg(true,S.wantName),600)}
+  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
   /* المحلي هو الأحدث: التعديلات اللي صارت وقت عدم التزامن تنحسب الحين */
   if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now();accRaw()}
   ACC.synced=true;accUI();accUpload(true);return 'local'}
@@ -72,7 +72,7 @@ function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js)}catch(e){ACC.synced=f
   if(!window.__accNoReload)location.reload();return true}
 function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
 /* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) — بس بعد ما يتأكد التزامن ---------- */
-function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;const t=Date.now();clearTimeout(ACC.upT);
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;if(window.DAMA_AUTH&&(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==window.DAMA_AUTH.uid||ONL.user.uid!==window.DAMA_AUTH.uid))return;const t=Date.now();clearTimeout(ACC.upT);
   if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return}ACC.lastUp=t;
   if(!S.editAt)S.editAt=S.savedAt||t;
   const sv=Object.assign({},S);let js=JSON.stringify(sv);if(js.length>700000){delete sv.replays;js=JSON.stringify(sv)}
@@ -154,4 +154,5 @@ setInterval(accUI,1500);
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#hud #prof')){e.preventDefault();accMenu()}},true);
 /* زر الحساب بالأونلاين بدال زر Google القديم */
 const _onlGoogle29=onlGoogle;onlGoogle=function(){return accLoginDlg()};
-setTimeout(accBoot,800);
+if(!window.DAMA_AUTH)setTimeout(accBoot,800);
+

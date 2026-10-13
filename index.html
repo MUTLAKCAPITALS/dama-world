@@ -256,6 +256,37 @@ input[type=range]{accent-color:var(--brass);width:160px}
 @media (max-width:760px){#topR .ibtn small{display:none}#topR{gap:6px}}
 </style>
 
+<link rel="stylesheet" href="auth_start.css">
+</head>
+<body class="auth-pending">
+<section id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="authBrand" data-state="loading">
+  <div class="auth-card">
+    <header><h1 id="authBrand" class="auth-brand">عالم الدامة<small>DAMA WORLD</small></h1><div class="auth-rule"></div></header>
+    <div>
+      <div id="authWait" class="auth-wait" aria-live="polite">
+        <span id="authSpinner" class="auth-spinner" aria-hidden="true"></span>
+        <p id="authStatus">جارٍ التحقق من حسابك…</p>
+        <button id="authRetry" class="auth-submit" type="button" hidden>إعادة المحاولة</button>
+      </div>
+      <div id="authFormArea" hidden>
+        <h2 id="authTitle">حيّاك في عالم الدامة</h2>
+        <p id="authSubtitle">سجّل دخولك وكمل اللعب من وين وقفت.</p>
+        <button id="authGoogle" class="auth-google" type="button"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285f4" d="M43.6 20.5H24v8h11.3A12 12 0 0 1 24 36a12 12 0 1 1 8.5-20.5l5.7-5.7A20 20 0 1 0 44 24c0-1.2-.1-2.4-.4-3.5z"/></svg>متابعة بـ Google</button>
+        <div id="authDivider" class="auth-divider">أو بالإيميل</div>
+        <form id="authForm">
+          <label for="authEmail">الإيميل</label>
+          <input id="authEmail" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" required>
+          <div id="authPasswordRow"><label for="authPassword">كلمة المرور</label><input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="6" required></div>
+          <button id="authForgot" class="auth-link auth-forgot" type="button">نسيت كلمة المرور؟</button>
+          <div id="authFormStatus" class="auth-form-status" role="status" aria-live="polite"></div>
+          <button id="authSubmit" class="auth-submit" type="submit">تسجيل الدخول</button>
+        </form>
+        <button id="authSwitch" class="auth-link auth-switch" type="button">ما عندك حساب؟ أنشئ حسابك</button>
+      </div>
+    </div>
+  </div>
+</section>
+<noscript><p style="position:fixed;z-index:10001;background:#111;color:white;padding:20px">فعّل JavaScript حتى تقدر تسجّل دخولك وتلعب.</p></noscript>
 <canvas id="c"></canvas>
 <div id="touch"></div>
 <div id="labels"></div>
@@ -331,17 +362,17 @@ input[type=range]{accent-color:var(--brass);width:160px}
 
 <div id="layer"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
-<script>
+<script type="application/x-dama-dependency" data-game-src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script type="application/x-dama-dependency" data-game-src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
+<script id="damaGameSource" type="application/x-dama-game">
 'use strict';
 document.documentElement.lang='ar';
 const $=s=>document.querySelector(s);
@@ -3416,7 +3447,7 @@ function pfBody(d){const B=$('#pfMain');if(!B)return;const t=PF.tab,tr=tierOf(d.
     B.innerHTML=ids.length?'<div class="pf-rel">'+ids.map(pById).filter(Boolean).map(p=>{const pr=presOf(p.id),cl=pr.s==='on'?'متصل':pr.s==='game'?'في مباراة':'غير متصل';const R=rng(+p.id+(+so.myId))();
       return '<button data-pa="open" data-v="'+p.id+'">'+avatarHTML(p,44)+'<b>'+esc(p.name)+'</b><small>'+cl+' · المستوى '+p.lvl+'</small>'+(d.me?'<span class="pf-int">'+ic('heart')+Math.floor(50+R*950)+'</span>':'')+'</button>'}).join('')+'</div>':'<p class="pf-empty">'+(d.me?'ما عندك أصدقاء للحين — أضف ربعك من قائمة الأصدقاء':'ما فيه أصدقاء مشتركين')+'</p>'}
   else if(t==='acc'){const s=S.safety;const tg=(k,on,label,sub)=>'<div class="pf-tg"><div><b>'+label+'</b><small>'+sub+'</small></div><button class="'+(on?'on':'')+'" data-pa="tg" data-v="'+k+'">'+(on?'مفعّل':'مطفي')+'</button></div>';
-    B.innerHTML='<div class="pf-tg"><div><b>رقم حسابك</b><small>'+d.id+' — عطه ربعك عشان يضيفونك</small></div><button data-pa="copy">نسخ</button></div>'+
+    B.innerHTML='<div class="pf-tg"><div><b>تسجيل الدخول والحساب</b><small>إدارة حسابك وتسجيل الخروج</small></div><button data-pa="session">حسابي</button></div><div class="pf-tg"><div><b>رقم حسابك</b><small>'+d.id+' — عطه ربعك عشان يضيفونك</small></div><button data-pa="copy">نسخ</button></div>'+
      tg('filter',s.filter,'فلتر الكلمات المسيئة','يخفي الكلام البذيء في الدردشة')+tg('showOnline',s.showOnline,'إظهار حالتي','يشوف أصدقاؤك إنك متصل')+tg('autoQ',s.autoQ,'الجودة التلقائية','تخفف الجرافيكس إذا صار الجهاز بطيء')+
      '<div class="pf-tg"><div><b>منو يقدر يرسل لك طلب صداقة</b></div><span class="pf-chips sm">'+[['all','الكل'],['fof','أصدقاء الأصدقاء'],['none','لا أحد']].map(o=>'<button class="'+(s.reqFrom===o[0]?'on':'')+'" data-pa="req" data-v="'+o[0]+'">'+o[1]+'</button>').join('')+'</span></div>'+
      '<p class="pf-empty" style="text-align:right">إذا أحد ضايقك افتح ملفه واضغط «إبلاغ» أو «حظر». لا تشارك رقمك أو عنوانك مع أحد.</p>'}
@@ -3431,6 +3462,7 @@ function pfClick(e){const b=e.target.closest('[data-pa]');if(!b)return;const a=b
   if(a==='close')return closeProfPage();
   if(a==='tab'){PF.tab=v;$('#pf').querySelectorAll('.pf-nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));const m=$('#pfMain');if(m)m.scrollTop=0;return pfBody(d)}
   if(a==='open'){if(v&&v!==PF.who){PF.who=v;PF.tab='me';PF.anim=true;pfRender()}return}
+  if(a==='session'){closeProfPage();return accMenu()}
   if(a==='copy'){try{navigator.clipboard.writeText(d.id)}catch(_){}toast('تم نسخ الرقم: '+d.id,1600);return}
   if(a==='title'){S.title=v;persist();return pfRender()}
   if(a==='frame'){S.frame=v;persist();return pfRender()}
@@ -4490,7 +4522,7 @@ updateAmbience=function(dt){_updateAmbience24.apply(this,arguments);if(!AC||!AMB
   ENG.idle.g.gain.setTargetAtTime(vol*(1-mix)*.75,n,.15);ENG.drive.g.gain.setTargetAtTime(vol*mix,n,.15);ENG.drive.s.playbackRate.setTargetAtTime(rate,n,.2)};
 
 /* ================= v25: أونلاين حقيقي — تسجيل دخول + غرفة بكود + نقلات مباشرة (Firebase) ================= */
-const FB_CFG={apiKey:"AIzaSyAHsUMKUr1dDgUXFUCk1SNj0hpwuoKNw8A",authDomain:"dama-world.firebaseapp.com",projectId:"dama-world",storageBucket:"dama-world.firebasestorage.app",messagingSenderId:"751728629330",appId:"1:751728629330:web:3f0e015059b1e646a6b18b"};
+const FB_CFG=window.DAMA_AUTH?window.DAMA_AUTH.config:{apiKey:"AIzaSyAHsUMKUr1dDgUXFUCk1SNj0hpwuoKNw8A",authDomain:"dama-world.firebaseapp.com",projectId:"dama-world",storageBucket:"dama-world.firebasestorage.app",messagingSenderId:"751728629330",appId:"1:751728629330:web:3f0e015059b1e646a6b18b"};
 const ONL={ready:null,auth:null,db:null,user:null,room:null,code:null,role:null,unsub:null,seq:0,started:false,npc:null,oppName:''};
 const ONL_SDK='https://cdn.jsdelivr.net/npm/firebase@10.12.2/';
 function onlLoadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('sdk'));document.head.appendChild(s)})}
@@ -4502,9 +4534,10 @@ function onlInit(){if(ONL.ready)return ONL.ready;
     ONL.auth=firebase.auth();ONL.db=firebase.firestore();
     /* ننتظر Firebase يرجّع الحساب المحفوظ قبل لا نسوي ضيف جديد */
     if(ONL.auth.onAuthStateChanged)await new Promise(r=>{const un=ONL.auth.onAuthStateChanged(()=>{try{un()}catch(e){}r()})});
-    if(!ONL.auth.currentUser)await ONL.auth.signInAnonymously();
+    if(!ONL.auth.currentUser){if(window.DAMA_AUTH)throw{code:'session'};await ONL.auth.signInAnonymously()}
+    if(window.DAMA_AUTH&&ONL.auth.currentUser.isAnonymous)throw{code:'session'};
     ONL.user=ONL.auth.currentUser;
-    try{await ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name||'لاعب',lvl:(S.lvl||S.level||1),seen:Date.now()},{merge:true})}catch(e){}
+    if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)try{await ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name||'لاعب',lvl:(S.lvl||S.level||1),seen:Date.now()},{merge:true})}catch(e){}
     return ONL.user})().catch(e=>{ONL.ready=null;throw e})}
 function onlErr(e){const net=/network|sdk|unavailable|failed/i.test((e&&(e.code||e.message))||'');
   return net?'ما قدرنا نتصل بالسيرفر. الأونلاين يشتغل من رابط اللعبة الخاص (مو من صفحة Claude).':'صار خطأ: '+((e&&(e.code||e.message))||'')}
@@ -4688,7 +4721,7 @@ function avConfirm(d){showLayer('<div class="scrim avp" data-x="1"><div class="c
 function avMenu(){const has=!!S.avatarImg;showLayer('<div class="scrim avp" data-x="1"><div class="card dlg"><span class="tag">ملفك الشخصي</span><h3>صورتك</h3><div class="prev" style="background-image:'+(has?'url('+S.avatarImg+')':'url(ui/avatar.webp)')+'"></div><div class="row"><button class="pbtn" data-a="pick">📷 اختر من الصور</button>'+(has?'<button class="gbtn" data-a="def">الصورة الافتراضية</button>':'')+'<button class="gbtn" data-a="x">رجوع</button></div></div></div>',
   {pick:()=>{closeLayer();avPick()},def:()=>{S.avatarImg=null;persist();avApply();avSync();closeLayer();toast('رجعت للصورة الافتراضية')},x:()=>closeLayer()})}
 /* نرسل الصورة للسيرفر عشان خصمك يشوفها بالأونلاين */
-function avSync(){try{if(ONL&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({photo:S.avatarImg||null},{merge:true}).catch(()=>{})}catch(e){}}
+function avSync(){if(window.DAMA_AUTH&&!window.DAMA_AUTH.entered)return;try{if(ONL&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({photo:S.avatarImg||null},{merge:true}).catch(()=>{})}catch(e){}}
 document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('.p3-av.me');if(t){e.preventDefault();e.stopPropagation();avMenu()}},true);
 /* إعادة تطبيق الصورة بعد ما تتحدث الواجهات */
 const _updateProfile28=updateProfile;updateProfile=function(){const r=_updateProfile28.apply(this,arguments);avApply();return r};
@@ -4740,13 +4773,13 @@ function accErr(e){const c=(e&&e.code)||'';return({'auth/email-already-in-use':'
   'auth/unauthorized-domain':'رابط اللعبة مو مضاف بإعدادات Firebase','auth/operation-not-allowed':'هالطريقة مو مفعّلة بإعدادات Firebase','auth/network-request-failed':'ما فيه اتصال بالسيرفر','auth/too-many-requests':'محاولات كثيرة، جرّب بعد شوي'})[c]||onlErr(e)}
 
 /* ---------- بداية التشغيل ---------- */
-async function accBoot(){try{await onlInit()}catch(e){return}const u=ONL.auth.currentUser;ACC.anon=!!u.isAnonymous;
+async function accBoot(){try{await onlInit()}catch(e){if(window.DAMA_AUTH)throw e;return}const u=ONL.auth.currentUser;if(window.DAMA_AUTH&&(!u||u.isAnonymous||u.uid!==window.DAMA_AUTH.uid)){window.DAMA_AUTH.syncResult('skip');return 'skip'}ACC.anon=!!u.isAnonymous;
   if(ACC.anon){if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));if(S.name!==S.guestName){if(!/^ضيف/.test(S.name||''))S.wantName=S.name;S.name=S.guestName}ACC.name=S.name;ACC.ready=true;
     if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now()}accRaw();accUI();return}
-  ACC.ready=true;ACC.name=S.name;accUI();await accSync({uid:u.uid})}
+  ACC.ready=true;ACC.name=S.name;accUI();return await accSync({uid:u.uid})}
 /* نقرأ حفظ الحساب من السيرفر نفسه (مو من الكاش)، ونقارنه بأساس المقارنة المحلي.
    ما نفتح باب الرفع قبل ما تنجح القراءة. لو فشلت: التقدم المحلي يبقى، وما نكتب شي، ونعيد المحاولة بنفس السياق. */
-async function accSync(ctx){const r=await accSync0(ctx);ACC.lastSync=r;return r}
+async function accSync(ctx){const r=await accSync0(ctx);ACC.lastSync=r;if(window.DAMA_AUTH)window.DAMA_AUTH.syncResult(r);return r}
 async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{};const u=ONL.auth.currentUser;
   if(!u||u.isAnonymous)return 'skip';if(ctx.uid&&ctx.uid!==u.uid){ACC.pendingCtx=null;return 'skip'}
   const uid=u.uid,restore=!!ctx.restore||accPendGet()===uid;ACC.synced=false;ACC.pendingCtx={uid,restore,retryMs:ctx.retryMs};
@@ -4758,7 +4791,7 @@ async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{
   /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
   if(d&&d.save&&(restore||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
   accPendSet(null);
-  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;setTimeout(()=>accNameDlg(true,S.wantName),600)}
+  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;if(!window.DAMA_AUTH||window.DAMA_AUTH.entered)setTimeout(()=>accNameDlg(true,S.wantName),600)}
   /* المحلي هو الأحدث: التعديلات اللي صارت وقت عدم التزامن تنحسب الحين */
   if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now();accRaw()}
   ACC.synced=true;accUI();accUpload(true);return 'local'}
@@ -4773,7 +4806,7 @@ function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js)}catch(e){ACC.synced=f
   if(!window.__accNoReload)location.reload();return true}
 function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
 /* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) — بس بعد ما يتأكد التزامن ---------- */
-function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;const t=Date.now();clearTimeout(ACC.upT);
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;if(window.DAMA_AUTH&&(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==window.DAMA_AUTH.uid||ONL.user.uid!==window.DAMA_AUTH.uid))return;const t=Date.now();clearTimeout(ACC.upT);
   if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return}ACC.lastUp=t;
   if(!S.editAt)S.editAt=S.savedAt||t;
   const sv=Object.assign({},S);let js=JSON.stringify(sv);if(js.length>700000){delete sv.replays;js=JSON.stringify(sv)}
@@ -4855,7 +4888,8 @@ setInterval(accUI,1500);
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#hud #prof')){e.preventDefault();accMenu()}},true);
 /* زر الحساب بالأونلاين بدال زر Google القديم */
 const _onlGoogle29=onlGoogle;onlGoogle=function(){return accLoginDlg()};
-setTimeout(accBoot,800);
+if(!window.DAMA_AUTH)setTimeout(accBoot,800);
+
 /* v30: إصلاح قلب الشاشة — المتصفح يعطي المقاس القديم أول لحظة الدوران، فنعيد الحساب بعد ما يستقر */
 (function(){let last='',busy=false,tm=[];
   const sz=()=>innerWidth+'x'+innerHeight;
@@ -4902,7 +4936,7 @@ function ctlApplyMute(){try{if(CTL.mute&&typeof VC!=='undefined'&&VC.local)VC.lo
 (function(){const b=$('#mMic');if(!b)return;const prev=b.onclick;b.onclick=function(){if(CTL.mute&&game&&game.online){toast('🔇 المايك مقفول عليك من الإدارة');return}return prev&&prev.apply(this,arguments)}})();
 if(typeof vcStart==='function'){const _vc31=vcStart;vcStart=async function(){const r=await _vc31.apply(this,arguments);ctlApplyMute();return r}}
 /* نبض: آخر ظهور (عشان عدّاد الأونلاين باللوحة) */
-function ctlBeat(){try{if(!document.hidden&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({seen:Date.now(),name:S.name||'لاعب',lvl:(typeof level==='function'?level():1)},{merge:true}).catch(()=>{})}catch(e){}}
+function ctlBeat(){if(window.DAMA_AUTH&&!window.DAMA_AUTH.entered)return;try{if(!document.hidden&&ONL.user&&ONL.db)ONL.db.collection('users').doc(ONL.user.uid).set({seen:Date.now(),name:S.name||'لاعب',lvl:(typeof level==='function'?level():1)},{merge:true}).catch(()=>{})}catch(e){}}
 async function ctlBoot(){try{await onlInit()}catch(e){return}const db=ONL.db,uid=ONL.user.uid;
   CTL.unsub.forEach(f=>{try{f()}catch(e){}});CTL.unsub=[];
   /* أول مرة نشوف هاللاعب: نسجّل تاريخ دخوله */
@@ -4912,7 +4946,7 @@ async function ctlBoot(){try{await onlInit()}catch(e){return}const db=ONL.db,uid
   try{CTL.unsub.push(db.collection('cfg').doc('global').onSnapshot(sn=>{const d=(sn&&sn.exists&&sn.data())||{};CTL.maint=!!d.maint;CTL.maintMsg=d.maintMsg||'';ctlRefreshBlock();ctlAnn(d.ann);try{liveApply(d)}catch(e){}},()=>{}))}catch(e){}
   clearInterval(CTL.hb);CTL.hb=setInterval(ctlBeat,120000)}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)ctlBeat()});
-setTimeout(ctlBoot,1500);
+if(!window.DAMA_AUTH)setTimeout(ctlBoot,1500);
 /* زر لوحة المالك بقائمة "حسابي" — يطلع لك بس */
 const _accMenu31=accMenu;accMenu=function(){const r=_accMenu31.apply(this,arguments);
   if(isOwner()){const row=document.querySelector('.acc .dlg .row');if(row&&!document.getElementById('own31')){const b=document.createElement('button');b.id='own31';b.className='pbtn';b.textContent='👑 لوحة المالك';b.style.marginTop='6px';b.onclick=()=>{window.open('admin.html','_blank')};row.parentNode.insertBefore(b,row.nextSibling)}}return r};
@@ -5267,9 +5301,14 @@ const _closeProf13=closeProfPage;closeProfPage=function(){if(typeof LBV!=='undef
 
 /* ---------------- boot ---------------- */
 async function boot(){try{await Promise.race([document.fonts.load('700 40px "Reem Kufi"'),sleep(1500)])}catch(e){}
-  if(!isUnlocked(S.country))S.country='kw';ensureState();makeDust();buildWorld(S.country);spawnNPCs();rebuildPlayer();applyQuality();micUI();updateProfile();$('#fps').hidden=!S.settings.fps;$('#nameI').value=S.name;loop();introReady()}
+  if(!isUnlocked(S.country))S.country='kw';ensureState();makeDust();buildWorld(S.country);spawnNPCs();rebuildPlayer();applyQuality();micUI();updateProfile();$('#fps').hidden=!S.settings.fps;$('#nameI').value=S.name;loop();if(window.DAMA_AUTH){INTRO.done=true;INTRO.on=false;const intro=$('#intro');if(intro)intro.remove();enterLobby(true)}else introReady()}
 $('#goB').onclick=()=>{audio();startAmbience();startMusic();const v=$('#nameI').value.trim();S.name=v||'ضيف';persist();updateProfile();$('#start').style.transition='opacity .5s';$('#start').style.opacity='0';
   setTimeout(()=>{$('#start').remove();$('#hud').hidden=false;joyEl.hidden=false;mode='toExplore';const p=new THREE.Vector3(),q=new THREE.Quaternion();camCur=camDist;camTweenTo(p,q,1.4,()=>{mode='explore';resize();setTimeout(firstRun,900);toast('اسحب يسار الشاشة للمشي، واسحب يمينها لتدوير الكاميرا. الدوانية أمامك!',4200)},(tp,tq)=>explorePose(tp,tq))},450)};
 $('#nameI').addEventListener('keydown',e=>{if(e.key==='Enter')$('#goB').click()});
-boot();
+if(window.DAMA_AUTH){window.DAMA_AUTH.attach({retry:()=>accBoot(),enter:()=>boot(),afterEnter:()=>{avSync();ctlBoot();if(!ACC.key)setTimeout(()=>accNameDlg(true,S.wantName),600)}})}else boot();
 </script>
+
+
+<script src="auth_start.js"></script>
+</body>
+</html>
