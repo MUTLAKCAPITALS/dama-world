@@ -5,7 +5,7 @@
 # Units: metres. Facade faces -Y (street side), outer face at y = 0. Z up, street level z = 0.
 import bpy, bmesh, math
 from mathutils import Vector, Matrix
-import lib
+import lib, details
 from lib import R
 
 W2 = 5.75          # half width
@@ -61,6 +61,7 @@ def build_shell(c, M):
     holes.append((W2 - TS - 0.01, big, y0 + 0.7, y1 + 0.7, z0, z1))
     holes.append((W2 - TS - 0.01, big, y0 + 0.48, y1 + 0.92, z1, z1 + 0.18))
     holes.append((RR[0] + .40, W2 - .40, RR[1] + .40, DEPTH - .40, ROOF, RR[2] + 1))
+    holes.append((-3.55, -2.95, 3.9, 4.4, SHOP_Z[0], SHOP_Z[0] + 2.05))          # spice shop: door to its store room
     holes.append((RD[0], RD[1], RR[1] - .1, RR[1] + .5, ROOF, RD[2]))
     holes.append((RD[0] - .22, RD[1] + .22, RR[1] - .1, RR[1] + .5, RD[2], RD[2] + .18))
     for sx in (-1.9, 1.9):                                                    # rain-spout slots
@@ -146,6 +147,7 @@ def roof_and_floor(c, M):
             yb = y_back + R.uniform(.10, .22)
             dz = R.uniform(-.012, .012)
             r0, r1 = lib.bm_cyl(poles, (x, yf, zc + dz), (x + R.uniform(-.03, .03), yb, zc - dz), r, 16, r1=r * R.uniform(.85, .95))
+            details.POLE_ENDS.append((x, zc + dz, y_front))
             lib.set_rand_attr(poles, r0 + r1, R.random())
     row(FLOOR1 - .075, 0.0, DEPTH, -W2 + .35, W2 - .35)                # first floor
     row(ROOF - .30, 0.0, DEPTH, -W2 + .35, W2 - .35)                   # roof
@@ -336,56 +338,6 @@ def shops(c, M):
     o4 = lib.from_bm('Shop_Frames', frame, c, M['beam']); lib.uv_box(o4); lib.bevel(o4, .006, 2)
     return o1, o2, o3, o4
 
-def spice_shop_interior(c, M):
-    a, b = -W2 + TS, -2.45
-    wood = bmesh.new(); jars = bmesh.new(); jars2 = bmesh.new(); sacks = bmesh.new()
-    zf = SHOP_Z[0]
-    # shelving on the back wall
-    for zz in (zf + .75, zf + 1.30, zf + 1.85):
-        vs, _ = lib.bm_box(wood, a + .05, b - .05, 3.62, 3.99, zz, zz + .035); lib.set_rand_attr(wood, vs, R.random())
-    for x in (a + .05, (a + b) / 2 - .02, b - .09):
-        vs, _ = lib.bm_box(wood, x, x + .04, 3.62, 3.99, zf, zf + 2.0); lib.set_rand_attr(wood, vs, R.random())
-    # low counter
-    lib.bm_box(wood, a + .2, b - .7, 2.6, 3.0, zf, zf + .75)
-    # jars on shelves
-    for zz in (zf + .785, zf + 1.335, zf + 1.885):
-        x = a + .18
-        while x < b - .2:
-            h = R.uniform(.18, .32); r = R.uniform(.06, .10)
-            prof = [(0, 0), (r * .7, 0), (r, h * .35), (r * .9, h * .8), (r * .45, h * .92), (r * .5, h), (0, h)]
-            lib.bm_lathe(jars if R.random() < .6 else jars2, (x, 3.80, zz), prof, 14)
-            x += r * 2 + R.uniform(.03, .08)
-    jo = lib.from_bm('Shop_Jars', jars, c, M['jar'], smooth=True); lib.uv_box(jo)
-    jo2 = lib.from_bm('Shop_Jars_Glazed', jars2, c, M['jar2'], smooth=True); lib.uv_box(jo2)
-    wo = lib.from_bm('Shop_Shelves', wood, c, M['beam']); lib.uv_box(wo); lib.bevel(wo, .004, 2)
-    # burlap sacks with heaps of spice: inside + on the platform outside
-    spices = [(0.85, 0.60, 0.10), (0.62, 0.12, 0.05), (0.42, 0.27, 0.12), (0.30, 0.38, 0.12), (0.80, 0.42, 0.08), (0.20, 0.12, 0.08)]
-    spots = [(-4.55, -0.32, .36), (-3.95, -0.30, .36), (-3.35, -0.34, .36), (-4.6, 1.0, zf), (-4.05, 1.1, zf), (-3.45, 1.0, zf), (-4.4, 1.7, zf)]
-    for i, (x, y, z) in enumerate(spots):
-        r = R.uniform(.17, .21); h = R.uniform(.34, .44)
-        prof = [(0, 0), (r * .85, 0), (r, .06), (r * 1.04, h * .5), (r * .98, h * .9), (r * 1.08, h), (r * 1.12, h + .03), (r * .95, h + .045), (r * .9, h - .02)]
-        lib.bm_lathe(sacks, (x, y, z), prof, 24, cap_top=False)
-        bm = bmesh.new()
-        lib.bm_lathe(bm, (x, y, z), [(r * .92, h - .025), (r * .7, h + .04), (r * .35, h + .085), (0, h + .10)], 18)
-        so = lib.from_bm('Spice_%d' % i, bm, c, M['spice'], smooth=True); lib.uv_box(so)
-        so.color = (*spices[i % len(spices)], 1)
-    sk = lib.from_bm('Shop_Sacks', sacks, c, M['burlap'], smooth=True); lib.uv_box(sk)
-    sd = sk.modifiers.new('Soft', 'SUBSURF'); sd.levels = sd.render_levels = 2
-    tx = bpy.data.textures.get('sack_folds') or bpy.data.textures.new('sack_folds', 'CLOUDS'); tx.noise_scale = .07; tx.noise_depth = 2
-    dm = sk.modifiers.new('Folds', 'DISPLACE'); dm.texture = tx; dm.strength = .025; dm.texture_coords = 'GLOBAL'
-    # hanging bulb with a tin shade
-    bulb = bmesh.new(); tin = bmesh.new()
-    x, y = (a + b) / 2, 1.6
-    lib.bm_cyl(tin, (x, y, FLOOR1 - .15), (x, y, 2.95), .004, 6)
-    lib.bm_lathe(tin, (x, y, 2.70), [(.17, 0), (.15, .02), (.05, .17), (.03, .25)], 20, cap_top=True, cap_bottom=False)
-    lib.bm_lathe(bulb, (x, y, 2.66), [(0, 0), (.03, .015), (.035, .05), (.015, .085), (0, .09)], 12)
-    t = lib.from_bm('Shop_Lamp_Shade', tin, c, M['iron'], smooth=True); lib.uv_box(t)
-    t.modifiers.new('Solid', 'SOLIDIFY').thickness = .004
-    bl = lib.from_bm('Shop_Lamp_Bulb', bulb, c, M['bulb'], smooth=True); bl.visible_shadow = False
-    L = bpy.data.lights.new('ShopBulb', 'POINT'); L.energy = 60; L.color = (1, .72, .42); L.shadow_soft_size = .04
-    lo = bpy.data.objects.new('ShopBulb', L); lo.location = (x, y, 2.62); c.objects.link(lo)
-    return lo
-
 def shop_canopy(c, M):
     """Shade canopy over the spice shop: mangrove poles let into the wall, a front pole, two
     diagonal struts on the piers, and a reed mat on top (sloping out so rain runs off)."""
@@ -421,30 +373,44 @@ def panel_leaf(bm, w, h, t=.035, m=None):
         vs, _ = lib.bm_box(bm, sw + .03, w - sw - .03, .004, t - .012, z0 + .03, z1 - .03, m=m); lib.set_rand_attr(bm, vs, R.random())
 
 def windows(c, M):
-    frames = bmesh.new(); leaves = bmesh.new(); bars = bmesh.new()
+    frames = bmesh.new(); leaves = bmesh.new(); bars = bmesh.new(); hw = bmesh.new()
     states = {-3.8: (5, 100), 0.0: (0, 0), 3.8: (95, 12)}     # degrees each leaf is opened inward
     for cx in WIN_X:
         a, b = cx - WIN_W / 2, cx + WIN_W / 2; z0, z1 = WIN_Z
+        # painted frame: outer casing + inner stop bead + a sill board, each a separate piece
         for vs in (lib.bm_box(frames, a, a + .07, .30, .44, z0, z1)[0], lib.bm_box(frames, b - .07, b, .30, .44, z0, z1)[0],
-                   lib.bm_box(frames, a, b, .30, .44, z1 - .07, z1)[0], lib.bm_box(frames, a, b, .30, .44, z0, z0 + .06)[0]):
+                   lib.bm_box(frames, a, b, .30, .44, z1 - .07, z1)[0], lib.bm_box(frames, a - .015, b + .015, .27, .46, z0, z0 + .055)[0],
+                   lib.bm_box(frames, a + .07, a + .09, .30, .33, z0 + .055, z1 - .07)[0], lib.bm_box(frames, b - .09, b - .07, .30, .33, z0 + .055, z1 - .07)[0],
+                   lib.bm_box(frames, a + .07, b - .07, .30, .33, z1 - .09, z1 - .07)[0]):
             lib.set_rand_attr(frames, vs, R.random())
-        # iron bars set in the reveal in front of the shutters
+        # hand-forged square bars, slightly irregular, through a flat cross bar
         n = 5
         for i in range(n):
-            x = a + (b - a) * (i + 1) / (n + 1)
-            lib.bm_cyl(bars, (x, .12, z0 - .04), (x, .12, z1 + .04), .0125, 8)
-        lib.bm_box(bars, a - .02, b + .02, .105, .135, (z0 + z1) / 2 - .02, (z0 + z1) / 2 + .02)
-        # two panelled leaves
+            x = a + (b - a) * (i + 1) / (n + 1) + R.uniform(-.006, .006)
+            m = T(x, .12, z0 - .04) @ Matrix.Rotation(math.radians(R.uniform(-.6, .6)), 4, 'Y') @ RZ(45 if i % 2 else 0)
+            lib.bm_box(bars, -.011, .011, -.011, .011, 0, z1 - z0 + .08, m=m)
+        zm = (z0 + z1) / 2
+        lib.bm_box(bars, a - .02, b + .02, .1, .14, zm - .022, zm + .022)
+        # two panelled leaves with strap hinges and a barrel bolt
         lw = (b - a - .14) / 2; h = z1 - z0 - .13
         o1, o2 = states[cx]
-        panel_leaf(leaves, lw, h, m=T(a + .07, .42, z0 + .06) @ RZ(o1))
-        panel_leaf(leaves, lw, h, m=T(b - .07, .42, z0 + .06) @ RZ(-o2) @ T(-lw, 0, 0))
+        ml = T(a + .07, .42, z0 + .06) @ RZ(o1)
+        mr = T(b - .07, .42, z0 + .06) @ RZ(-o2) @ T(-lw, 0, 0)
+        panel_leaf(leaves, lw, h, m=ml)
+        panel_leaf(leaves, lw, h, m=mr)
+        for zz in (.08, h - .12):
+            lib.bm_box(hw, 0, .16, -.004, 0, zz, zz + .03, m=ml)
+            lib.bm_box(hw, lw - .16, lw, -.004, 0, zz, zz + .03, m=mr)
+            lib.bm_cyl(hw, (a + .072, .418, z0 + .06 + zz - .01), (a + .072, .418, z0 + .06 + zz + .04), .009, 8)
+            lib.bm_cyl(hw, (b - .072, .418, z0 + .06 + zz - .01), (b - .072, .418, z0 + .06 + zz + .04), .009, 8)
+        lib.bm_box(hw, lw - .07, lw - .01, -.012, 0, h * .5 - .015, h * .5 + .015, m=ml)
     L = bpy.data.lights.new('UpperRoomLamp', 'POINT'); L.energy = 0; L.color = (1, .68, .38); L.shadow_soft_size = .1
     lo = bpy.data.objects.new('UpperRoomLamp', L); lo.location = (-3.6, 2.2, 5.6); c.objects.link(lo)
     lo['day_energy'] = 0.0; lo['night_energy'] = 45.0
-    f = lib.from_bm('Window_Frames', frames, c, M['beam']); lib.uv_box(f); lib.bevel(f, .006, 2)
+    f = lib.from_bm('Window_Frames', frames, c, M['frame']); lib.uv_box(f); lib.bevel(f, .006, 2)
+    hwo = lib.from_bm('Window_Hardware', hw, c, M['iron'], smooth=True); lib.uv_box(hwo)
     l = lib.from_bm('Window_Shutters', leaves, c, M['shutter']); lib.uv_box(l); lib.bevel(l, .004, 2)
-    br = lib.from_bm('Window_Bars', bars, c, M['iron'], smooth=True); lib.uv_box(br)
+    br = lib.from_bm('Window_Bars', bars, c, M['iron']); lib.uv_box(br); lib.bevel(br, .003, 2)
     # small side windows: bars only + a closed leaf
     side = bmesh.new()
     y0, y1, z0, z1 = SIDE_WIN
@@ -489,49 +455,6 @@ def lantern(c, M, name, x, z):
     return lo
 
 # ------------------------------------------------------------------ ground: pavers with a medallion
-def pavers(c, M):
-    bm = bmesh.new()
-    s, j = .40, .008
-    cx, cy, rr = 0.0, -2.45, 1.30
-    x0, x1, y0, y1 = -9.2, 9.2, -6.0, 8.0
-    nx, ny = int((x1 - x0) / s), int((y1 - y0) / s)
-    cnt = 0
-    for i in range(nx):
-        for k in range(ny):
-            ax, ay = x0 + i * s, y0 + k * s
-            if -W2 - .02 < ax + s and ax < W2 + .02 and ay + s > -.02: continue          # under the building
-            if math.hypot(ax + s / 2 - cx, ay + s / 2 - cy) < rr - .3: continue
-            h = .06 + R.uniform(-.003, .003)
-            vs, fs = lib.bm_box(bm, ax + j / 2, ax + s - j / 2, ay + j / 2, ay + s - j / 2, -.06, h - .06)
-            beige = 1.0 if R.random() < .3 else 0.0
-            lib.set_rand_attr(bm, vs, beige); cnt += 1
-    o = lib.from_bm('Street_Pavers', bm, c, M['paver']); lib.uv_box(o); lib.bevel(o, .007, 2)
-    cut = bmesh.new(); lib.bm_cyl(cut, (cx, cy, -1), (cx, cy, 1), rr, 64)
-    co = lib.from_bm('Medallion_Cutter', cut, c); co.hide_render = True; co.hide_viewport = True; co.display_type = 'WIRE'
-    bo = o.modifiers.new('Medallion', 'BOOLEAN'); bo.operation = 'DIFFERENCE'; bo.object = co; bo.solver = 'EXACT'
-    # medallion: centre star of wedges, two rings of curved stones
-    md = bmesh.new()
-    def sector(r0, r1, a0, a1, val):
-        jr = j / 2
-        a0 += jr / max(r1, .05); a1 -= jr / max(r1, .05)
-        r0 = r0 + jr if r0 > 0 else 0; r1 = r1 - jr
-        k = 6
-        outer = [(cx + r1 * math.cos(a0 + (a1 - a0) * t / k), cy + r1 * math.sin(a0 + (a1 - a0) * t / k)) for t in range(k + 1)]
-        inner = [(cx + r0 * math.cos(a1 - (a1 - a0) * t / k), cy + r0 * math.sin(a1 - (a1 - a0) * t / k)) for t in range(k + 1)] if r0 > 0 else [(cx, cy)]
-        pts = outer + inner
-        before = set(md.verts)
-        lib.bm_prism(md, pts, -.06, .0 + R.uniform(-.002, .002))
-        lib.set_rand_attr(md, [v for v in md.verts if v not in before], val)
-    for i in range(8): sector(0, .42, 2 * math.pi * i / 8, 2 * math.pi * (i + 1) / 8, float(i % 2))
-    for i in range(16): sector(.42, .86, 2 * math.pi * i / 16, 2 * math.pi * (i + 1) / 16, 1.0)
-    for i in range(28): sector(.86, rr - .004, 2 * math.pi * i / 28, 2 * math.pi * (i + 1) / 28, 0.0)
-    mo = lib.from_bm('Street_Medallion', md, c, M['paver']); lib.uv_box(mo); lib.bevel(mo, .006, 2, 30)
-    bed = bmesh.new(); lib.bm_box(bed, x0, x1, y0, y1, -.08, -.012)
-    be = lib.from_bm('Street_Bed', bed, c, M['mortar']); lib.uv_box(be)
-    sand = bmesh.new(); lib.bm_box(sand, -1500, 1500, -1500, 1500, -.10, -.082)
-    sa = lib.from_bm('Ground_Sand', sand, c, M['mud']); lib.uv_box(sa)
-    return cnt
-
 def build(M):
     root = lib.coll('HERO_Building')
     lib.clear_collection(root)
@@ -540,12 +463,15 @@ def build(M):
     gr = lib.coll('Ground', root); lt = lib.coll('Lights', root)
     for cc in (st, dr, wn, rf, dt, sh, gr, lt): lib.clear_collection(cc)
     info = {}
+    details.POLE_ENDS.clear()
+    import sys; H = sys.modules[__name__]
     shell, info['shell_faces'] = build_shell(st, M)
     plaster_trims(st, M); platforms(st, M); lintels(st, M)
     roof_and_floor(rf, M); spouts(rf, M); roof_room(rf, M)
     *_, info['studs'] = gate(dr, M)
-    shops(dr, M); spice_shop_interior(sh, M); shop_canopy(sh, M)
+    shops(dr, M); details.spice_shop(sh, M, H); shop_canopy(sh, M)
     windows(wn, M)
     lantern(dt, M, 'LanternL', -1.95, 2.95); lantern(dt, M, 'LanternR', 1.95, 2.95)
-    info['pavers'] = pavers(gr, M)
+    details.cable_run(dt, M); details.street_props(dt, M); details.decals(dt, M, H)
+    info['pavers'] = details.street(gr, M, H)
     return info

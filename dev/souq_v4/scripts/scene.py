@@ -34,6 +34,9 @@ def cameras():
         'roof':    (camera('CAM_RoofEdge', (3.6, -2.6, 6.6), (1.9, 0.0, 7.5), 40, c=c), (1400, 1000)),
         'shop':    (camera('CAM_SpiceShop', (-2.05, -2.7, 1.5), (-3.8, 1.8, 1.35), 26, c=c), (1400, 1000)),
         'base':    (camera('CAM_WallBase', (-7.3, -2.0, 1.0), (-5.6, 0.4, 0.75), 40, c=c), (1400, 1000)),
+        'plaster': (camera('CAM_PlasterClose', (-6.75, -1.55, 1.55), (-5.72, 0.35, 1.15), 32, c=c), (1400, 1000)),
+        'street':  (camera('CAM_StreetFrontage', (7.2, -10.2, 3.4), (-0.4, -2.6, 0.5), 24, c=c), (1600, 1000)),
+        'shop2':   (camera('CAM_SpiceShopDeep', (-3.75, -1.6, 1.55), (-3.85, 3.0, 1.3), 24, c=c), (1400, 1000)),
         'board':   (camera('CAM_MaterialBoard', (40, BY - 9, 3.2), (40, BY, 1.0), ortho=13.0, c=c), (2000, 800)),
     }
 
@@ -130,6 +133,8 @@ def render_setup(samples=128):
 def clay(on):
     vl = bpy.context.view_layer
     vl.material_override = bpy.data.materials.get('M_Clay') if on else None
+    for o in bpy.data.objects:
+        if o.name.startswith('Decal_'): o.hide_render = on
 
 def queue(jobs, done_flag='queue_done'):
     """Render a list of (camera_key, file_name, mode, clay) one per timer tick so each MCP call returns at once."""

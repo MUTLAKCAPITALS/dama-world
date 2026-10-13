@@ -2,7 +2,7 @@
 import sys, importlib, bpy
 
 def _fresh():
-    for k in ('lib', 'materials', 'hero', 'scene'): sys.modules.pop(k, None)
+    for k in ('lib', 'materials', 'details', 'hero', 'scene'): sys.modules.pop(k, None)
     import lib, materials, hero, scene
     return lib, materials, hero, scene
 
