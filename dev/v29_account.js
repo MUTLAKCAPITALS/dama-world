@@ -2,7 +2,7 @@
 const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0,pendingCtx:null};
 /* أساس المقارنة: editAt = وقت آخر تعديل حقيقي للتقدم، وينحفظ مع التقدم فيبقى صحيح بعد إعادة التشغيل.
    ما يتحرك وقت التشغيل ولا وقت ما يكون الحساب مو متزامن مع السيرفر. (الحفظات القديمة بدون editAt: نستخدم savedAt) */
-const ACC_KEY='damaworld.v1',ACC_PEND='acc.pendingRestore';
+const ACC_KEY=(window.DAMA_AUTH&&window.DAMA_AUTH.saveKey)||'damaworld.v1',ACC_PEND='acc.pendingRestore';
 /* ترحيل الحفظ القديم (قبل editAt): نثبّت الأساس من savedAt الأصلي الحين — قبل أي حفظ أثناء التشغيل —
    ونكتبه بالتخزين فوراً عشان يصمد لو انعادت الصفحة قبل ما نقرأ السيرفر */
 ACC.bootLocalAt=(()=>{let v=null,raw=null;try{raw=localStorage.getItem(ACC_KEY);v=raw?JSON.parse(raw):null}catch(e){v=null}
@@ -39,7 +39,10 @@ function accErr(e){const c=(e&&e.code)||'';return({'auth/email-already-in-use':'
   'auth/unauthorized-domain':'رابط اللعبة مو مضاف بإعدادات Firebase','auth/operation-not-allowed':'هالطريقة مو مفعّلة بإعدادات Firebase','auth/network-request-failed':'ما فيه اتصال بالسيرفر','auth/too-many-requests':'محاولات كثيرة، جرّب بعد شوي'})[c]||onlErr(e)}
 
 /* ---------- بداية التشغيل ---------- */
-async function accBoot(){try{await onlInit()}catch(e){if(window.DAMA_AUTH)throw e;return}const u=ONL.auth.currentUser;if(window.DAMA_AUTH&&(!u||u.isAnonymous||u.uid!==window.DAMA_AUTH.uid)){window.DAMA_AUTH.syncResult('skip');return 'skip'}ACC.anon=!!u.isAnonymous;
+async function accBoot(){if(window.DAMA_AUTH&&window.DAMA_AUTH.guest){ACC.ready=true;ACC.anon=true;ACC.synced=false;
+    if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));S.name=ACC.name=S.guestName;
+    accRaw();accUI();window.DAMA_AUTH.syncResult('guest');return 'guest'}
+  try{await onlInit()}catch(e){if(window.DAMA_AUTH)throw e;return}const u=ONL.auth.currentUser;if(window.DAMA_AUTH&&(!u||u.isAnonymous||u.uid!==window.DAMA_AUTH.uid)){window.DAMA_AUTH.syncResult('skip');return 'skip'}ACC.anon=!!u.isAnonymous;
   if(ACC.anon){if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));if(S.name!==S.guestName){if(!/^ضيف/.test(S.name||''))S.wantName=S.name;S.name=S.guestName}ACC.name=S.name;ACC.ready=true;
     if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now()}accRaw();accUI();return}
   ACC.ready=true;ACC.name=S.name;accUI();return await accSync({uid:u.uid})}
@@ -87,7 +90,7 @@ const _persist29=persist;persist=function(){if(ACC.reloading)return;if(ACC.ready
 
 /* ---------- نافذة التسجيل ---------- */
 function accDlg(inner,acts,onClose){showLayer('<div class="scrim acc" data-x="1"><div class="card dlg">'+inner+'</div></div>',acts,onClose)}
-function accLoginDlg(why){accDlg('<span class="tag">حسابك</span><h3>سجّل واحفظ تقدمك</h3><p class="muted">'+esc(why||'تقدمك ينحفظ بالسيرفر وتقدر تدخل من أي جوال')+'</p>'+
+function accLoginDlg(why){if(window.DAMA_AUTH&&window.DAMA_AUTH.guest)return window.DAMA_AUTH.openAccount();accDlg('<span class="tag">حسابك</span><h3>سجّل واحفظ تقدمك</h3><p class="muted">'+esc(why||'تقدمك ينحفظ بالسيرفر وتقدر تدخل من أي جوال')+'</p>'+
   '<button class="gbt" data-a="g">'+G_SVG+'متابعة بـ Google</button><button class="gbt em" data-a="em">✉️ بالإيميل والباسوورد</button><button class="lnk" data-a="x">بعدين</button>',
   {g:()=>accGoogle(),em:()=>accEmailDlg(),x:()=>closeLayer()})}
 function accEmailDlg(err){accDlg('<span class="tag">بالإيميل</span><h3>تسجيل أو دخول</h3><input class="ain" id="aE" type="email" placeholder="الإيميل" autocomplete="email" dir="ltr"><input class="ain" id="aP" type="password" placeholder="الباسوورد (6 حروف أو أكثر)" autocomplete="current-password" dir="ltr"><div class="st bad" id="aS">'+esc(err||'')+'</div>'+
