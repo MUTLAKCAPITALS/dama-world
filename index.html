@@ -4700,7 +4700,9 @@ const _onlInit28=onlInit;onlInit=function(){return _onlInit28.apply(this,argumen
 avApply();
 
 /* ================= v29: حسابات حقيقية — ضيف باسم تلقائي، تسجيل Google/إيميل، اسم فريد مع اقتراحات، حفظ بالسيرفر ================= */
-const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false};
+const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0};
+/* وقت آخر حفظ محلي "حقيقي" — ناخذه من التخزين قبل أي حفظ يصير وقت التشغيل */
+ACC.bootLocalAt=(()=>{try{const v=JSON.parse(localStorage.getItem('damaworld.v1')||'{}');return +v.savedAt||0}catch(e){return 0}})();
 (function(){const css=`
 .acc .dlg{text-align:center;max-width:360px}
 .acc input.ain{width:100%;font:600 16px var(--f-body);padding:10px 12px;border-radius:12px;border:1.5px solid #b98a3e;background:rgba(0,0,0,.35);color:#fff6e2;margin:5px 0;text-align:center}
@@ -4726,19 +4728,28 @@ function accErr(e){const c=(e&&e.code)||'';return({'auth/email-already-in-use':'
 /* ---------- بداية التشغيل ---------- */
 async function accBoot(){try{await onlInit()}catch(e){return}const u=ONL.auth.currentUser;ACC.anon=!!u.isAnonymous;
   if(ACC.anon){if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));if(S.name!==S.guestName){if(!/^ضيف/.test(S.name||''))S.wantName=S.name;S.name=S.guestName}ACC.name=S.name;ACC.ready=true;accRaw();accUI();return}
-  let d=null;try{d=(await ONL.db.collection('users').doc(u.uid).get()).data()}catch(e){}
-  if(d&&d.save&&!sessionStorage.getItem('accLoaded')&&(d.saveAt||0)>(S.savedAt||0)){try{sessionStorage.setItem('accLoaded','1');const sv=JSON.parse(d.save);localStorage.setItem('damaworld.v1',JSON.stringify(sv));location.reload();return}catch(e){}}
-  ACC.ready=true;if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;setTimeout(()=>accNameDlg(true),600)}
-  accUI();accUpload(true)}
-function accRaw(){try{S.savedAt=Date.now();localStorage.setItem('damaworld.v1',JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
+  ACC.ready=true;ACC.name=S.name;accUI();await accSync(u)}
+/* نقرأ حفظ الحساب من السيرفر، ونقارنه بالحفظ المحلي اللي كان موجود قبل التشغيل.
+   ما نرفع أي شي قبل ما تنجح القراءة. لو فشلت: نخلي التقدم المحلي ونعيد المحاولة بعدين. */
+async function accSync(u){clearTimeout(ACC.retryT);u=u||ONL.auth.currentUser;if(!u||u.isAnonymous)return;let snap;
+  try{snap=await ONL.db.collection('users').doc(u.uid).get()}
+  catch(e){ACC.synced=false;ACC.retryT=setTimeout(()=>accSync(),30000);return 'fail'}
+  const d=snap&&snap.exists?snap.data():null,cloudAt=+(d&&d.saveAt)||0;
+  if(d&&d.save&&cloudAt>ACC.bootLocalAt&&sessionStorage.getItem('accLoadedAt')!==String(cloudAt)){
+    try{const sv=JSON.parse(d.save);sessionStorage.setItem('accLoadedAt',String(cloudAt));accAdopt(sv);return 'cloud'}catch(e){}}
+  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;setTimeout(()=>accNameDlg(true),600)}
+  ACC.synced=true;accUI();accUpload(true);return 'local'}
+/* نعتمد حفظ السيرفر: نكتبه محلياً ونعيد التحميل، ونمنع أي حفظ ثاني يكتب فوقه قبل الإعادة */
+function accAdopt(sv){ACC.synced=false;ACC.reloading=true;try{localStorage.setItem('damaworld.v1',JSON.stringify(sv))}catch(e){}if(!window.__accNoReload)location.reload()}
+function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem('damaworld.v1',JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
 /* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) ---------- */
-function accUpload(now){if(!ACC.ready||ACC.anon||!ONL.user)return;const t=Date.now();clearTimeout(ACC.upT);
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;const t=Date.now();clearTimeout(ACC.upT);
   if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return}ACC.lastUp=t;
   const sv=Object.assign({},S);let js=JSON.stringify(sv);if(js.length>700000){delete sv.replays;js=JSON.stringify(sv)}
   ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name,nameKey:ACC.key||null,photo:S.avatarImg||null,lvl:(typeof level==='function'?level():1),rating:S.rating||1000,wins:S.wins||0,save:js,saveAt:S.savedAt||t,seen:t},{merge:true}).catch(()=>{})}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)accUpload(true)});
 /* أي تغيير للاسم من أي مكان يمر من هنا */
-const _persist29=persist;persist=function(){if(ACC.ready&&ACC.name&&S.name!==ACC.name){const want=S.name;S.name=ACC.name;_persist29.apply(this,arguments);try{updateProfile()}catch(e){}setTimeout(()=>{if(ACC.anon){S.wantName=want;accLoginDlg('عشان تختار اسمك لازم تسجّل — وتقدمك ينحفظ معك')}else accNameDlg(false,want)},300);return}
+const _persist29=persist;persist=function(){if(ACC.reloading)return;if(ACC.ready&&ACC.name&&S.name!==ACC.name){const want=S.name;S.name=ACC.name;_persist29.apply(this,arguments);try{updateProfile()}catch(e){}setTimeout(()=>{if(ACC.anon){S.wantName=want;accLoginDlg('عشان تختار اسمك لازم تسجّل — وتقدمك ينحفظ معك')}else accNameDlg(false,want)},300);return}
   S.savedAt=Date.now();_persist29.apply(this,arguments);accUpload(false)};
 
 /* ---------- نافذة التسجيل ---------- */
@@ -4762,9 +4773,11 @@ async function accEmail(isNew){const[em,pw]=accVals();if(!em||!pw){accSay('اك�
     await accAfterLogin(switched)}catch(e){accSay(accErr(e))}}
 async function accForgot(){const[em]=accVals();if(!em){accSay('اكتب إيميلك فوق أول');return}try{await ONL.auth.sendPasswordResetEmail(em);accSay('أرسلنا لك رابط بإيميلك ✅',true)}catch(e){accSay(accErr(e))}}
 /* بعد الدخول: حساب موجود ← نجيب تقدمه، حساب جديد ← نختار الاسم */
-async function accAfterLogin(switched){const u=ONL.user=ONL.auth.currentUser;ACC.anon=false;
-  let d=null;try{d=(await ONL.db.collection('users').doc(u.uid).get()).data()}catch(e){}
-  if(switched&&d&&d.save){closeLayer();toast('أهلاً '+(d.name||'')+'! نرجّع حسابك…');try{const sv=JSON.parse(d.save);localStorage.setItem('damaworld.v1',JSON.stringify(sv));sessionStorage.setItem('accLoaded','1')}catch(e){}setTimeout(()=>location.reload(),900);return}
+async function accAfterLogin(switched){const u=ONL.user=ONL.auth.currentUser;ACC.anon=false;ACC.synced=false;
+  let d=null;try{const sn=await ONL.db.collection('users').doc(u.uid).get();d=sn.exists?sn.data():null}
+  catch(e){closeLayer();toast('دخلت ✅ بس ما قدرنا نقرأ حفظك الحين — بنحاول مرة ثانية');ACC.retryT=setTimeout(()=>accSync(),5000);return}
+  if(switched&&d&&d.save){closeLayer();toast('أهلاً '+(d.name||'')+'! نرجّع حسابك…');try{const sv=JSON.parse(d.save);sessionStorage.setItem('accLoadedAt',String(+d.saveAt||0));setTimeout(()=>accAdopt(sv),900);ACC.reloading=true}catch(e){}return}
+  ACC.synced=true;
   if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;S.name=d.name;accRaw();closeLayer();toast('تم تسجيل الدخول ✅');accUI();accUpload(true);return}
   toast('تم ✅ تقدمك محفوظ بحسابك');accNameDlg(true,S.wantName)}
 /* ---------- اختيار الاسم مع فحص مباشر واقتراحات ---------- */
@@ -4794,7 +4807,7 @@ function accMenu(){if(!ACC.ready){toast('الحسابات تشتغل من راب
   accDlg('<span class="tag">حسابي</span><h3>'+esc(S.name)+'</h3><p class="muted">مسجّل بـ '+how+(u.email?' · <span dir="ltr">'+esc(u.email)+'</span>':'')+'<br>تقدمك محفوظ بالسيرفر ✅</p>'+
     '<div class="row"><button class="pbtn" data-a="nm">✏️ تغيير الاسم</button><button class="gbtn" data-a="out">تسجيل خروج</button></div><button class="lnk" data-a="del" style="color:#ff9a8a">حذف الحساب نهائياً</button>',
     {nm:()=>accNameDlg(false,S.name),out:()=>accSignOut(),del:()=>accDelDlg()})}
-async function accSignOut(){accUpload(true);try{await ONL.auth.signOut()}catch(e){}try{localStorage.removeItem('damaworld.v1');sessionStorage.removeItem('accLoaded')}catch(e){}toast('سجّلت خروج');setTimeout(()=>location.reload(),600)}
+async function accSignOut(){accUpload(true);try{await ONL.auth.signOut()}catch(e){}try{localStorage.removeItem('damaworld.v1');sessionStorage.removeItem('accLoadedAt')}catch(e){}toast('سجّلت خروج');setTimeout(()=>location.reload(),600)}
 function accDelDlg(){accDlg('<span class="tag" style="color:#ff9a8a">تحذير</span><h3>حذف الحساب؟</h3><p class="muted">بينحذف حسابك واسمك وكل تقدمك نهائياً، وما نقدر نرجّعه.</p><div class="row"><button class="gbtn danger" data-a="y">احذف نهائياً</button><button class="pbtn" data-a="n">لا، رجوع</button></div>',{y:()=>accDelete(),n:()=>accMenu()})}
 async function accDelete(){const u=ONL.auth.currentUser,db=ONL.db;try{if(ACC.key)await db.collection('names').doc(ACC.key).delete();await db.collection('users').doc(u.uid).delete();await u.delete();
     localStorage.removeItem('damaworld.v1');toast('انحذف حسابك');setTimeout(()=>location.reload(),800)}
