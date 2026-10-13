@@ -1,3 +1,9 @@
+# Current regression suite
+
+Run `node dev/tests/run.cjs` for the current entry, guest, save migration and reliability checks. See [RELIABILITY.md](RELIABILITY.md) for the 24-finding review, coverage and remaining Firebase/device requirements.
+
+The save-sync notes below describe the original migration fix; revision checks and transaction acknowledgements now additionally protect uploads. The older Python browser harness is historical and is not included in the current runner.
+
 # Save-sync fix — tests
 
 The sign-in entry now has its own tests. See [AUTH_ENTRY.md](AUTH_ENTRY.md) for

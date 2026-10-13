@@ -18,13 +18,13 @@ function boot(w){
   const c=vm.createContext({console,JSON,Math,Promise,Date:{now:()=>w.now},S:JSON.parse(w.disk.get('damaworld.v1')),localStorage:st(w.disk),sessionStorage:st(w.session),
     window:{},location:{reload(){loads++}},toast(){},accUI(){},updateProfile(){},closeLayer(){},accNameDlg(){},accLoginDlg(){},
     setTimeout:(f,ms)=>{timers.set(++next,{f,ms});return next},clearTimeout:id=>timers.delete(id),
-    ONL:{user,auth:{currentUser:user},db:{collection:()=>({doc:()=>({
+    ONL:{user,auth:{currentUser:user},db:{runTransaction:async callback=>callback({get:ref=>ref.get(),set:(ref,data)=>ref.set(data)}),collection:()=>({doc:()=>({
       get:async()=>{if(w.failGet)throw Error('offline');return {exists:true,metadata:{fromCache:!!w.cache},data:()=>w.cache||{...w.cloud}}},
       set:async d=>{w.writes.push(structuredClone(d));Object.assign(w.cloud,d)}
     })})}},onlInit:async()=>{},level:()=>1});
   vm.runInContext(slice('const ACC=','(function(){const css='),c);
   vm.runInContext("function persist(){localStorage.setItem('damaworld.v1',JSON.stringify(S))}",c);
-  for(const name of ['accBoot','accSync','accSync0','accAdopt','accRaw','accUpload','accAfterLogin','accMark'])vm.runInContext(fn(name),c);
+  for(const name of ['accBoot','accSync','accSync0','accAdopt','accRaw','accBytes','accBackup','accSaveStatus','accUpload','accAfterLogin','accMark'])vm.runInContext(fn(name),c);
   vm.runInContext(slice('const _persist29=','/* ---------- نافذة التسجيل'),c);
   return {c,timers,state:()=>vm.runInContext('({coins:S.coins,savedAt:S.savedAt,bootLocalAt:ACC.bootLocalAt,editAt:S.editAt,synced:ACC.synced,reloading:ACC.reloading})',c),loads:()=>loads};
 }
