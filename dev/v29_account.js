@@ -1,7 +1,15 @@
 /* ================= v29: حسابات حقيقية — ضيف باسم تلقائي، تسجيل Google/إيميل، اسم فريد مع اقتراحات، حفظ بالسيرفر ================= */
-const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0};
-/* وقت آخر حفظ محلي "حقيقي" — ناخذه من التخزين قبل أي حفظ يصير وقت التشغيل */
-ACC.bootLocalAt=(()=>{try{const v=JSON.parse(localStorage.getItem('damaworld.v1')||'{}');return +v.savedAt||0}catch(e){return 0}})();
+const ACC={ready:false,anon:true,name:null,key:null,lastUp:0,upT:0,busy:false,synced:false,reloading:false,retryT:0,pendingCtx:null};
+/* أساس المقارنة: editAt = وقت آخر تعديل حقيقي للتقدم، وينحفظ مع التقدم فيبقى صحيح بعد إعادة التشغيل.
+   ما يتحرك وقت التشغيل ولا وقت ما يكون الحساب مو متزامن مع السيرفر. (الحفظات القديمة بدون editAt: نستخدم savedAt) */
+const ACC_KEY='damaworld.v1',ACC_PEND='acc.pendingRestore';
+ACC.bootLocalAt=(()=>{try{const v=JSON.parse(localStorage.getItem(ACC_KEY)||'{}');return +(v.editAt!=null?v.editAt:v.savedAt)||0}catch(e){return 0}})();
+/* بصمة محتوى التقدم بدون الحقول المتغيرة — عشان نفرّق بين "حفظ بدون تغيير" و"تعديل حقيقي" */
+function accFp(){const a=S.savedAt,b=S.editAt,c=S.unsyncedDirty;S.savedAt=0;S.editAt=0;delete S.unsyncedDirty;let js='';try{js=JSON.stringify(S)}catch(e){}S.savedAt=a;S.editAt=b;if(c)S.unsyncedDirty=c;return js}
+ACC.lastFp=accFp();
+/* سياق "استرجاع حساب موجود" ينحفظ بالتخزين عشان يصمد لو انعادت الصفحة قبل ما نقرأ السيرفر */
+function accPendGet(){try{return localStorage.getItem(ACC_PEND)}catch(e){return null}}
+function accPendSet(uid){try{if(uid)localStorage.setItem(ACC_PEND,uid);else localStorage.removeItem(ACC_PEND)}catch(e){}}
 (function(){const css=`
 .acc .dlg{text-align:center;max-width:360px}
 .acc input.ain{width:100%;font:600 16px var(--f-body);padding:10px 12px;border-radius:12px;border:1.5px solid #b98a3e;background:rgba(0,0,0,.35);color:#fff6e2;margin:5px 0;text-align:center}
@@ -26,30 +34,50 @@ function accErr(e){const c=(e&&e.code)||'';return({'auth/email-already-in-use':'
 
 /* ---------- بداية التشغيل ---------- */
 async function accBoot(){try{await onlInit()}catch(e){return}const u=ONL.auth.currentUser;ACC.anon=!!u.isAnonymous;
-  if(ACC.anon){if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));if(S.name!==S.guestName){if(!/^ضيف/.test(S.name||''))S.wantName=S.name;S.name=S.guestName}ACC.name=S.name;ACC.ready=true;accRaw();accUI();return}
-  ACC.ready=true;ACC.name=S.name;accUI();await accSync(u)}
-/* نقرأ حفظ الحساب من السيرفر، ونقارنه بالحفظ المحلي اللي كان موجود قبل التشغيل.
-   ما نرفع أي شي قبل ما تنجح القراءة. لو فشلت: نخلي التقدم المحلي ونعيد المحاولة بعدين. */
-async function accSync(u){clearTimeout(ACC.retryT);u=u||ONL.auth.currentUser;if(!u||u.isAnonymous)return;let snap;
-  try{snap=await ONL.db.collection('users').doc(u.uid).get()}
-  catch(e){ACC.synced=false;ACC.retryT=setTimeout(()=>accSync(),30000);return 'fail'}
-  const d=snap&&snap.exists?snap.data():null,cloudAt=+(d&&d.saveAt)||0;
-  if(d&&d.save&&cloudAt>ACC.bootLocalAt&&sessionStorage.getItem('accLoadedAt')!==String(cloudAt)){
-    try{const sv=JSON.parse(d.save);sessionStorage.setItem('accLoadedAt',String(cloudAt));accAdopt(sv);return 'cloud'}catch(e){}}
-  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;setTimeout(()=>accNameDlg(true),600)}
+  if(ACC.anon){if(!S.guestName)S.guestName='ضيف_'+(1000+Math.floor(Math.random()*9000));if(S.name!==S.guestName){if(!/^ضيف/.test(S.name||''))S.wantName=S.name;S.name=S.guestName}ACC.name=S.name;ACC.ready=true;
+    if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now()}accRaw();accUI();return}
+  ACC.ready=true;ACC.name=S.name;accUI();await accSync({uid:u.uid})}
+/* نقرأ حفظ الحساب من السيرفر نفسه (مو من الكاش)، ونقارنه بأساس المقارنة المحلي.
+   ما نفتح باب الرفع قبل ما تنجح القراءة. لو فشلت: التقدم المحلي يبقى، وما نكتب شي، ونعيد المحاولة بنفس السياق. */
+async function accSync(ctx){const r=await accSync0(ctx);ACC.lastSync=r;return r}
+async function accSync0(ctx){clearTimeout(ACC.retryT);ctx=ctx||ACC.pendingCtx||{};const u=ONL.auth.currentUser;
+  if(!u||u.isAnonymous)return 'skip';if(ctx.uid&&ctx.uid!==u.uid){ACC.pendingCtx=null;return 'skip'}
+  const uid=u.uid,restore=!!ctx.restore||accPendGet()===uid;ACC.synced=false;ACC.pendingCtx={uid,restore,retryMs:ctx.retryMs};
+  let snap=null;try{snap=await ONL.db.collection('users').doc(uid).get({source:'server'})}catch(e){snap=null}
+  if(!snap||(snap.metadata&&snap.metadata.fromCache)){ACC.retryT=setTimeout(()=>accSync(ACC.pendingCtx),ctx.retryMs||30000);return 'fail'}
+  if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid)return 'skip';
+  ACC.pendingCtx=null;
+  const d=snap.exists?snap.data():null,cloudAt=+(d&&d.saveAt)||0;
+  /* حساب موجود رجعنا له: حفظ السيرفر هو الأساس دايماً. غير كذا: الأحدث يفوز */
+  if(d&&d.save&&(restore||cloudAt>ACC.bootLocalAt))return accAdopt(d.save,cloudAt)?'cloud':'adopt-fail';
+  accPendSet(null);
+  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;if(S.name!==d.name){S.name=d.name;accRaw()}}else{ACC.name=S.name;setTimeout(()=>accNameDlg(true,S.wantName),600)}
+  /* المحلي هو الأحدث: التعديلات اللي صارت وقت عدم التزامن تنحسب الحين */
+  if(S.unsyncedDirty){delete S.unsyncedDirty;S.editAt=Date.now();accRaw()}
   ACC.synced=true;accUI();accUpload(true);return 'local'}
-/* نعتمد حفظ السيرفر: نكتبه محلياً ونعيد التحميل، ونمنع أي حفظ ثاني يكتب فوقه قبل الإعادة */
-function accAdopt(sv){ACC.synced=false;ACC.reloading=true;try{localStorage.setItem('damaworld.v1',JSON.stringify(sv))}catch(e){}if(!window.__accNoReload)location.reload()}
-function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem('damaworld.v1',JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
-/* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) ---------- */
+/* نعتمد حفظ السيرفر: ما نسجّل نجاح ولا نعيد التحميل إلا بعد ما تنكتب النسخة الصحيحة فعلاً */
+function accAdopt(js,cloudAt){let sv;try{sv=JSON.parse(js)}catch(e){ACC.synced=false;toast('حفظك بالسيرفر فيه مشكلة — ما لمسنا شي');return false}
+  if(sessionStorage.getItem('accLoadedAt')===String(cloudAt)){ACC.synced=false;toast('ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم');return false}
+  sv.editAt=cloudAt;delete sv.unsyncedDirty;const out=JSON.stringify(sv);ACC.reloading=true;
+  try{localStorage.setItem(ACC_KEY,out);if(localStorage.getItem(ACC_KEY)!==out)throw new Error('verify')}
+  catch(e){ACC.reloading=false;ACC.synced=false;
+    toast(e&&(e.name==='QuotaExceededError'||e.code===22)?'مساحة التخزين بالجوال ممتلئة — ما قدرنا نرجّع حفظك. تقدمك بالسيرفر سليم':'ما قدرنا نرجّع حفظك — تقدمك بالسيرفر سليم',5000);return false}
+  accPendSet(null);try{sessionStorage.setItem('accLoadedAt',String(cloudAt))}catch(e){}
+  if(!window.__accNoReload)location.reload();return true}
+function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.setItem(ACC_KEY,JSON.stringify(S))}catch(e){}try{updateProfile()}catch(e){}}
+/* ---------- الحفظ بالسيرفر (كل 20 ثانية كحد أقصى) — بس بعد ما يتأكد التزامن ---------- */
 function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return;const t=Date.now();clearTimeout(ACC.upT);
   if(!now&&t-ACC.lastUp<20000){ACC.upT=setTimeout(()=>accUpload(true),20000-(t-ACC.lastUp));return}ACC.lastUp=t;
+  if(!S.editAt)S.editAt=S.savedAt||t;
   const sv=Object.assign({},S);let js=JSON.stringify(sv);if(js.length>700000){delete sv.replays;js=JSON.stringify(sv)}
-  ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name,nameKey:ACC.key||null,photo:S.avatarImg||null,lvl:(typeof level==='function'?level():1),rating:S.rating||1000,wins:S.wins||0,save:js,saveAt:S.savedAt||t,seen:t},{merge:true}).catch(()=>{})}
+  ONL.db.collection('users').doc(ONL.user.uid).set({name:S.name,nameKey:ACC.key||null,photo:S.avatarImg||null,lvl:(typeof level==='function'?level():1),rating:S.rating||1000,wins:S.wins||0,save:js,saveAt:S.editAt,seen:t},{merge:true}).catch(()=>{})}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)accUpload(true)});
+/* تعديل حقيقي؟ نحرّك editAt بس لو المحتوى تغيّر والحساب متزامن (أو ضيف). غير كذا نعلّم إن فيه تعديل معلّق */
+function accMark(){const fp=accFp();if(fp===ACC.lastFp)return;ACC.lastFp=fp;
+  if(ACC.ready&&(ACC.anon||ACC.synced))S.editAt=Date.now();else S.unsyncedDirty=true}
 /* أي تغيير للاسم من أي مكان يمر من هنا */
 const _persist29=persist;persist=function(){if(ACC.reloading)return;if(ACC.ready&&ACC.name&&S.name!==ACC.name){const want=S.name;S.name=ACC.name;_persist29.apply(this,arguments);try{updateProfile()}catch(e){}setTimeout(()=>{if(ACC.anon){S.wantName=want;accLoginDlg('عشان تختار اسمك لازم تسجّل — وتقدمك ينحفظ معك')}else accNameDlg(false,want)},300);return}
-  S.savedAt=Date.now();_persist29.apply(this,arguments);accUpload(false)};
+  accMark();S.savedAt=Date.now();_persist29.apply(this,arguments);accUpload(false)};
 
 /* ---------- نافذة التسجيل ---------- */
 function accDlg(inner,acts,onClose){showLayer('<div class="scrim acc" data-x="1"><div class="card dlg">'+inner+'</div></div>',acts,onClose)}
@@ -73,12 +101,13 @@ async function accEmail(isNew){const[em,pw]=accVals();if(!em||!pw){accSay('اك�
 async function accForgot(){const[em]=accVals();if(!em){accSay('اكتب إيميلك فوق أول');return}try{await ONL.auth.sendPasswordResetEmail(em);accSay('أرسلنا لك رابط بإيميلك ✅',true)}catch(e){accSay(accErr(e))}}
 /* بعد الدخول: حساب موجود ← نجيب تقدمه، حساب جديد ← نختار الاسم */
 async function accAfterLogin(switched){const u=ONL.user=ONL.auth.currentUser;ACC.anon=false;ACC.synced=false;
-  let d=null;try{const sn=await ONL.db.collection('users').doc(u.uid).get();d=sn.exists?sn.data():null}
-  catch(e){closeLayer();toast('دخلت ✅ بس ما قدرنا نقرأ حفظك الحين — بنحاول مرة ثانية');ACC.retryT=setTimeout(()=>accSync(),5000);return}
-  if(switched&&d&&d.save){closeLayer();toast('أهلاً '+(d.name||'')+'! نرجّع حسابك…');try{const sv=JSON.parse(d.save);sessionStorage.setItem('accLoadedAt',String(+d.saveAt||0));setTimeout(()=>accAdopt(sv),900);ACC.reloading=true}catch(e){}return}
-  ACC.synced=true;
-  if(d&&d.nameKey){ACC.name=d.name;ACC.key=d.nameKey;S.name=d.name;accRaw();closeLayer();toast('تم تسجيل الدخول ✅');accUI();accUpload(true);return}
-  toast('تم ✅ تقدمك محفوظ بحسابك');accNameDlg(true,S.wantName)}
+  /* رجع لحساب موجود: نحفظ السياق (بالـuid) عشان أي إعادة محاولة أو إعادة تحميل ما ترفع بيانات الضيف فوق الحساب */
+  if(switched)accPendSet(u.uid);
+  const r=await accSync({uid:u.uid,restore:!!switched,retryMs:5000});
+  if(r==='fail'){closeLayer();toast('دخلت ✅ بس ما قدرنا نقرأ حفظك الحين — بنحاول مرة ثانية');return}
+  if(r==='cloud'){closeLayer();toast('أهلاً! نرجّع حسابك…');return}
+  if(r==='adopt-fail'){closeLayer();return}
+  if(r==='local'){if(ACC.key){closeLayer();toast('تم تسجيل الدخول ✅')}else toast('تم ✅ تقدمك محفوظ بحسابك')}}
 /* ---------- اختيار الاسم مع فحص مباشر واقتراحات ---------- */
 let accCk=0;
 function accNameDlg(first,pref){accDlg('<span class="tag">'+(first?'خطوة أخيرة':'تغيير الاسم')+'</span><h3>اختر اسمك</h3><p class="muted">الاسم يكون لك بروحك — ما يقدر أحد ثاني ياخذه</p><input class="ain" id="aN" maxlength="14" autocomplete="off" value="'+esc(pref&&!/^ضيف/.test(pref)?pref:'')+'" placeholder="مثال: بو ناصر"><div class="st" id="aS"></div><div class="sug" id="aG"></div>'+
@@ -106,7 +135,7 @@ function accMenu(){if(!ACC.ready){toast('الحسابات تشتغل من راب
   accDlg('<span class="tag">حسابي</span><h3>'+esc(S.name)+'</h3><p class="muted">مسجّل بـ '+how+(u.email?' · <span dir="ltr">'+esc(u.email)+'</span>':'')+'<br>تقدمك محفوظ بالسيرفر ✅</p>'+
     '<div class="row"><button class="pbtn" data-a="nm">✏️ تغيير الاسم</button><button class="gbtn" data-a="out">تسجيل خروج</button></div><button class="lnk" data-a="del" style="color:#ff9a8a">حذف الحساب نهائياً</button>',
     {nm:()=>accNameDlg(false,S.name),out:()=>accSignOut(),del:()=>accDelDlg()})}
-async function accSignOut(){accUpload(true);try{await ONL.auth.signOut()}catch(e){}try{localStorage.removeItem('damaworld.v1');sessionStorage.removeItem('accLoadedAt')}catch(e){}toast('سجّلت خروج');setTimeout(()=>location.reload(),600)}
+async function accSignOut(){accUpload(true);try{await ONL.auth.signOut()}catch(e){}try{localStorage.removeItem('damaworld.v1');sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND)}catch(e){}toast('سجّلت خروج');setTimeout(()=>location.reload(),600)}
 function accDelDlg(){accDlg('<span class="tag" style="color:#ff9a8a">تحذير</span><h3>حذف الحساب؟</h3><p class="muted">بينحذف حسابك واسمك وكل تقدمك نهائياً، وما نقدر نرجّعه.</p><div class="row"><button class="gbtn danger" data-a="y">احذف نهائياً</button><button class="pbtn" data-a="n">لا، رجوع</button></div>',{y:()=>accDelete(),n:()=>accMenu()})}
 async function accDelete(){const u=ONL.auth.currentUser,db=ONL.db;try{if(ACC.key)await db.collection('names').doc(ACC.key).delete();await db.collection('users').doc(u.uid).delete();await u.delete();
     localStorage.removeItem('damaworld.v1');toast('انحذف حسابك');setTimeout(()=>location.reload(),800)}

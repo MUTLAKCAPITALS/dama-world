@@ -6,7 +6,7 @@
   const snap=p=>{const d=read(p);return{id:p.split('/').pop(),exists:!!d,data:()=>d}};
   const W={set:(p,d,o)=>{localStorage.setItem(key(p),JSON.stringify(o&&o.merge?apply(read(p),d):apply(null,d)));notify(p)},
     update:(p,d)=>{const c=read(p);if(!c)throw new Error('not-found');localStorage.setItem(key(p),JSON.stringify(apply(c,d)));notify(p)},del:p=>{localStorage.removeItem(key(p));notify(p)}};
-  function doc(p){return{_p:p,get:async()=>{if(localStorage.getItem('shim:failGet'))throw{code:'unavailable',message:'offline'};return snap(p)},set:async(d,o)=>W.set(p,d,o),update:async d=>W.update(p,d),delete:async()=>W.del(p),
+  function doc(p){return{_p:p,get:async(o)=>{const srv=o&&o.source==='server';if(srv)window.__shimServerGets=(window.__shimServerGets||0)+1;if(localStorage.getItem('shim:failGet'))throw{code:'unavailable',message:'offline'};if(localStorage.getItem('shim:serverDown')){if(srv)throw{code:'unavailable',message:'server unreachable'};const c=localStorage.getItem('shim:cache:'+p);const sn=snap(p);if(c){const d=JSON.parse(c);return{id:sn.id,exists:true,data:()=>d,metadata:{fromCache:true}}}return Object.assign(sn,{metadata:{fromCache:true}})}return Object.assign(snap(p),{metadata:{fromCache:false}})},set:async(d,o)=>W.set(p,d,o),update:async d=>W.update(p,d),delete:async()=>W.del(p),
     onSnapshot:(cb)=>{const f=()=>setTimeout(()=>cb(snap(p)),30);(L[p]=L[p]||[]).push(f);f();return()=>{L[p]=L[p].filter(x=>x!==f)}}}}
   const SK='shim:auth:'+(sessionStorage.getItem('shimTab')||(sessionStorage.setItem('shimTab',Math.random().toString(36).slice(2)),sessionStorage.getItem('shimTab')));
   const accts=()=>JSON.parse(localStorage.getItem('shim:accts')||'{}'),saveA=a=>localStorage.setItem('shim:accts',JSON.stringify(a));
