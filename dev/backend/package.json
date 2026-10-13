@@ -1,0 +1,7 @@
+{
+  "name": "dama-world-backend-tests",
+  "private": true,
+  "main": "http-target.cjs",
+  "scripts": { "test": "node run.cjs" },
+  "devDependencies": { "@google-cloud/functions-framework": "5.0.5" }
+}

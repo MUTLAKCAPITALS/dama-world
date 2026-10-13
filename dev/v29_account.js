@@ -89,7 +89,7 @@ function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.
 function accBytes(text){let n=0;for(const c of text){const cp=c.codePointAt(0);n+=cp<128?1:cp<2048?2:cp<65536?3:4}return n}
 function accBackup(uid){try{localStorage.setItem('acc.backup.'+uid,JSON.stringify(S));return true}catch(e){return false}}
 function accSaveStatus(){if(window.DAMA_LOCAL_SAVE_FAILED&&ACC.saveError)return 'الحفظ ما اكتمل بالجهاز أو السيرفر؛ لا تسكر الصفحة';if(ACC.conflict)return 'الحفظ تغيّر من جهاز ثاني — راجع المزامنة';if(ACC.saveError)return 'تقدمك محفوظ بالجهاز؛ ننتظر اتصال السيرفر';if(ACC.uploading)return 'جارٍ حفظ التقدم…';if(ACC.synced&&ACC.ackedFp!==accFp())return 'تقدمك بالجهاز؛ بانتظار حفظ آخر التغييرات';return ACC.synced?'آخر حفظ بالسيرفر تم بنجاح ✅':'جارٍ قراءة حفظ الحساب…'}
-function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return Promise.resolve(false);
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||ACC.deleting||!ONL.user)return Promise.resolve(false);
   const uid=ONL.user.uid;if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid||(window.DAMA_AUTH&&uid!==window.DAMA_AUTH.uid))return Promise.resolve(false);
   clearTimeout(ACC.upT);const t=Date.now();
   if(ACC.uploading)return ACC.uploading.then(ok=>ok&&now?accUpload(true):ok);
@@ -187,8 +187,27 @@ async function accSignOut(){if(ACC.signingOut)return;ACC.signingOut=true;
     try{localStorage.removeItem(ACC_KEY);sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND);localStorage.removeItem('acc.owner')}catch(e){}
     toast('سجّلت خروج');location.reload();
   }catch(e){toast(accErr(e))}finally{ACC.signingOut=false}}
-function accDelDlg(){accDlg('<span class="tag">حذف الحساب</span><h3>تواصل مع الإدارة</h3><p class="muted">الحذف من داخل اللعبة موقوف مؤقتاً لحماية بياناتك أثناء تجهيز الحذف الآمن.</p><button class="pbtn" data-a="n">رجوع</button>',{n:()=>accMenu()})}
-async function accDelete(){toast('الحذف من داخل اللعبة موقوف مؤقتاً لحماية تقدمك. تواصل مع إدارة اللعبة لحذف الحساب.',6000);return false}
+async function accDelDlg(){
+  try{const cfg=typeof onlBackendConfig==='function'?await onlBackendConfig():{};if(!cfg.accountDeletion){accDlg('<span class="tag">حذف الحساب</span><h3>تواصل مع الإدارة</h3><p class="muted">الحذف من داخل اللعبة موقوف مؤقتاً لحماية بياناتك أثناء تجهيز الحذف الآمن.</p><button class="pbtn" data-a="n">رجوع</button>',{n:()=>accMenu()});return}
+    const u=ONL.auth.currentUser,google=u.providerData.some(p=>p.providerId==='google.com');ACC.deleteConfirmed=false;
+    accDlg('<span class="tag">حذف نهائي</span><h3>حذف حسابك وتقدمك؟</h3><p class="muted">سيُحذف حسابك وحفظك وحجز اسمك وسجل مكافآتك. لا يمكن التراجع بعد تأكيد الطلب. المباريات المشتركة تُغلق وتُزال هويتك منها.</p>'+(google?'<p class="muted">سنطلب تأكيد هويتك عبر Google.</p>':'<input class="ain" id="aDeletePassword" type="password" autocomplete="current-password" placeholder="كلمة المرور لتأكيد هويتك">')+'<div class="st bad" id="aDeleteError"></div><button class="gbtn danger" data-a="yes">حذف الحساب نهائياً</button><button class="pbtn" data-a="no">رجوع</button>',{no:()=>accMenu(),yes:()=>{ACC.deleteConfirmed=true;accDelete()}})
+  }catch(e){toast(accErr(e))}
+}
+async function accDelete(){
+  if(typeof ACC==='undefined'||!ACC.deleteConfirmed||typeof onlCall!=='function'){toast('الحذف من داخل اللعبة موقوف مؤقتاً لحماية تقدمك. تواصل مع إدارة اللعبة لحذف الحساب.',6000);return false}
+  if(ACC.deleting)return false;ACC.deleting=true;const u=ONL.auth.currentUser,uid=u.uid;
+  try{
+    if(u.providerData.some(p=>p.providerId==='google.com'))await u.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+    else{const input=$('#aDeletePassword'),password=input?input.value:'';if(!password)throw Error('اكتب كلمة المرور لتأكيد هويتك');await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,password));if(input)input.value=''}
+    await u.getIdToken(true);if(ONL.auth.currentUser?.uid!==uid)throw Error('الحساب تغيّر؛ أعد فتح نافذة الحذف');
+    const answer=await onlCall('damaDeleteAccount',{confirmation:'DELETE_MY_ACCOUNT'});if(!answer.accepted)throw Error('طلب الحذف لم يتأكد');
+    ACC.synced=false;ACC.reloading=true;clearTimeout(ACC.upT);clearTimeout(ACC.retryT);try{vcStop();onlClose(false)}catch(e){}
+    try{for(const key of [ACC_KEY,ACC_PEND,'acc.owner','acc.base.'+uid,'acc.backup.'+uid,'dama.room.'+uid])localStorage.removeItem(key);sessionStorage.removeItem('accLoadedAt')}catch(e){}
+    try{await ONL.auth.signOut()}catch(e){}
+    accDlg('<h3>تم قبول طلب الحذف</h3><p class="muted">جارٍ إكمال حذف الحساب وبياناته. لا تحتاج إبقاء الصفحة مفتوحة.</p><button class="pbtn" data-a="done">العودة للبداية</button>',{done:()=>location.reload()});return true
+  }catch(e){const text=e.code?accErr(e):e.message,err=$('#aDeleteError');if(err)err.textContent=text;else toast(text,6000);return false}
+  finally{ACC.deleting=false;ACC.deleteConfirmed=false}
+}
 /* ---------- مداخل الواجهة ---------- */
 function accUI(){let b=$('#accBan');const lb=$('#lbProf');if(!ACC.ready||!ACC.anon||!lb||mode!=='lobby'||document.querySelector('.scrim')){if(b)b.remove();return}
   if(!b){b=document.createElement('button');b.id='accBan';b.textContent='💾 سجّل واحفظ تقدمك';b.onclick=e=>{e.stopPropagation();accLoginDlg()};document.body.appendChild(b)}

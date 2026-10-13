@@ -2008,6 +2008,7 @@ function onMoveStats(m,side,was,now){if(side!==1)return;if(m.caps.length){S.stat
   if(Math.abs(was)===1&&Math.abs(now)===2){S.stats.kings++;track('king')}checkAch()}
 function onMatchEnd(res){const g=game;S.stats.games++;track('play3');const crowd=specs.filter(s=>s.state==='watch').length;S.stats.crowd=Math.max(S.stats.crowd,crowd);if(crowd>=6)track('crowd6');
   if(res>0){S.stats.wins++;track('win2');if(g.quick){S.stats.quickWins++;track('quick')}if(g.diff>=2)track('hard');if(g.diff===3)S.stats.expertWins++}
+  if(g.online&&g.online.protocol===3&&g.online.award){const a=g.online.award;S.onlineRating=a.rating;checkAch();persist();updateProfile();return '<div class="tag">تصنيف الأونلاين الموثّق '+(a.delta>=0?'+':'')+a.delta+' ← '+a.rating+'</div>'}
   const ro=g.online?(+g.online.opponentRating||1000):npcRating(g.npc),own=g.online?(+g.online.selfRating||S.rating):S.rating,E=1/(1+Math.pow(10,(ro-own)/400)),sc=res>0?1:res<0?0:.5,delta=Math.round(32*(sc-E));S.rating=Math.max(100,S.rating+delta);S.stats.bestRating=Math.max(S.stats.bestRating,S.rating);const tr=tierOf(S.rating);
   checkAch();persist();updateProfile();return '<div class="tag" style="background:rgba(255,255,255,.08);color:'+tr[2]+';border-color:'+tr[2]+'">التصنيف '+(delta>=0?'+':'')+delta+' ← '+S.rating+' · '+tr[1]+'</div>'}
 function fmtT(s){s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -4564,6 +4565,10 @@ function onlInit(){if(window.DAMA_AUTH&&window.DAMA_AUTH.guest)return Promise.re
 function onlErr(e){const net=/network|sdk|unavailable|failed/i.test((e&&(e.code||e.message))||'');
   return net?'ما قدرنا نتصل بالسيرفر. الأونلاين يشتغل من رابط اللعبة الخاص (مو من صفحة Claude).':'صار خطأ: '+((e&&(e.code||e.message))||'')}
 /* ترميز النقلة (Firestore ما يقبل مصفوفات داخل مصفوفات) */
+async function onlBackendConfig(){const snap=await ONL.db.collection('cfg').doc('backend').get({source:'server'});ONL.backend=snap.exists?snap.data():{};return ONL.backend}
+async function onlServerEnabled(){const cfg=await onlBackendConfig();if(cfg.enabled&&cfg.protocol!==3)throw Error('حدّث اللعبة لاستخدام الأونلاين');return cfg.enabled===true&&cfg.protocol===3}
+async function onlCall(name,data){if(!ONL.functionsReady)ONL.functionsReady=(async()=>{if(!firebase.functions)await onlLoadScript(ONL_SDK+'firebase-functions-compat.js');return firebase.app().functions('us-central1')})().catch(e=>{ONL.functionsReady=null;throw e});return (await (await ONL.functionsReady).httpsCallable(name)(data)).data}
+async function onlRecoverServerRoom(){const profile=await onlCall('damaOnline',{action:'profile'});ONL.competitive=profile;if(profile.activeRoom){const snap=await ONL.db.collection('rooms').doc(profile.activeRoom).get({source:'server'});if(snap.exists){const r=snap.data();ONL.code=profile.activeRoom;onlRemember(r)}}}
 const onlEnc=a=>a.map(p=>p[0]+''+p[1]).join(',');
 const onlDec=(s,flip)=>s?s.split(',').map(t=>flip?[7-+t[0],7-+t[1]]:[+t[0],+t[1]]):[];
 function onlCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<4;i++)s+=A[Math.floor(Math.random()*A.length)];return s}
@@ -4584,10 +4589,10 @@ function onlCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i
 function onlDlg(inner,acts,onClose){showLayer('<div class="scrim onl" data-x="1"><div class="card dlg">'+inner+'</div></div>',acts,onClose)}
 async function onlMenu(){if(!requirePlayAccount())return;if(mode!=='explore'){toast('ارجع للعالم المفتوح أول');return}
   onlDlg('<span class="tag">العب مع ربعك</span><h3>دامة أونلاين</h3><p class="muted"><span class="spin"></span>جارٍ الاتصال بالسيرفر…</p>',{});
-  try{await onlInit()}catch(e){onlDlg('<h3>الأونلاين غير متاح هنا</h3><p class="muted">'+esc(onlErr(e))+'</p><div class="row"><button class="pbtn" data-a="x">تمام</button></div>',{x:()=>closeLayer()});return}
+  try{await onlInit();if(await onlServerEnabled())await onlRecoverServerRoom()}catch(e){onlDlg('<h3>الأونلاين غير متاح هنا</h3><p class="muted">'+esc(onlErr(e))+'</p><div class="row"><button class="pbtn" data-a="x">تمام</button></div>',{x:()=>closeLayer()});return}
   const g=ONL.user&&!ONL.user.isAnonymous;
   onlDlg('<span class="tag">العب مع ربعك</span><h3>دامة أونلاين</h3><p class="muted">سوّ غرفة وأرسل الكود لربعك، أو ادخل بكود وصلك.</p>'+
-    (onlStored()?'<button class="pbtn" data-a="resume">استرجاع المباراة السابقة</button>':'')+'<div class="row"><button class="pbtn" data-a="host">'+ic('board')+'سوّ غرفة</button><button class="gbtn" data-a="join">'+ic('crowd')+'ادخل بكود</button></div>'+
+    (ONL.competitive?'<p class="muted">تصنيف الأونلاين الموثّق: '+ONL.competitive.rating+'</p>':'')+(onlStored()?'<button class="pbtn" data-a="resume">استرجاع المباراة السابقة</button>':'')+'<div class="row"><button class="pbtn" data-a="host">'+ic('board')+'سوّ غرفة</button><button class="gbtn" data-a="join">'+ic('crowd')+'ادخل بكود</button></div>'+
     '<p class="muted" style="margin-top:10px">'+(g?'✅ مسجّل بحسابك':'<button class="gbtn" data-a="google" style="font-size:13px">احفظ حسابي بـ Google</button>')+'</p>',
     {resume:()=>onlResume(),host:()=>onlHost(),join:()=>onlJoinDlg(),google:()=>onlGoogle()})}
 async function onlGoogle(){try{const p=new firebase.auth.GoogleAuthProvider();
@@ -4596,11 +4601,11 @@ async function onlGoogle(){try{const p=new firebase.auth.GoogleAuthProvider();
 
 /* ---------- سوّ غرفة ---------- */
 async function onlHost(){if(!requirePlayAccount())return;if(ONL.creating)return;ONL.creating=true;let code,ref;
-  try{const profile=await ONL.db.collection('users').doc(ONL.user.uid).get({source:'server'});const rating=+(profile.exists&&profile.data().rating)||1000;
+  try{if(typeof onlServerEnabled==='function'&&await onlServerEnabled()){ONL.createRequest=ONL.createRequest||('req_'+Date.now()+'_'+Math.random().toString(36).slice(2));const r=await onlCall('damaOnline',{action:'create',requestId:ONL.createRequest});code=r.code;ref=ONL.db.collection('rooms').doc(code);ONL.createRequest=null}else{const profile=await ONL.db.collection('users').doc(ONL.user.uid).get({source:'server'});const rating=+(profile.exists&&profile.data().rating)||1000;
     let created=false;for(let i=0;i<5&&!created;i++){code=onlCode();ref=ONL.db.collection('rooms').doc(code);
       created=await ONL.db.runTransaction(async tx=>{let d;try{d=await tx.get(ref)}catch(e){if(e.code==='permission-denied')return false;throw e}if(d.exists)return false;
         tx.set(ref,{code,protocol:2,matchId:ONL.user.uid+'-'+Date.now()+'-'+Math.random().toString(36).slice(2),host:ONL.user.uid,hostName:S.name||'لاعب',hostPhoto:S.avatarImg||null,hostRating:rating,guest:null,guestName:'',state:'wait',moves:[],messages:[],voiceEpoch:1,resigned:null,created:Date.now()});return true})}
-    if(!created){toast('كل الرموز اللي جربناها مستخدمة؛ حاول مرة ثانية');return}
+    if(!created){toast('كل الرموز اللي جربناها مستخدمة؛ حاول مرة ثانية');return}}
   }catch(e){toast(onlErr(e));return}finally{ONL.creating=false}
   ONL.code=code;ONL.role='host';ONL.seq=0;ONL.started=false;onlListen(ref);
   const msg='تعال نلعب دامة بـ عالم الدامة! كود الغرفة: '+code+'\n'+location.href.split('#')[0]+'#join='+code;
@@ -4612,10 +4617,10 @@ function onlJoinDlg(pref){if(!requirePlayAccount())return;onlDlg('<span class="t
   {go:()=>onlJoin(($('#onlC').value||'').trim().toUpperCase()),x:()=>onlMenu()});setTimeout(()=>{const i=$('#onlC');i&&i.focus()},50)}
 async function onlJoin(code){if(!requirePlayAccount())return;const E=$('#onlE');if(!/^[A-Z0-9]{4}$/.test(code||'')){if(E)E.textContent='الكود 4 حروف أو أرقام';return}if(ONL.joining)return;ONL.joining=true;
   try{const ref=ONL.db.collection('rooms').doc(code),uid=ONL.user.uid;
-    const profile=await ONL.db.collection('users').doc(uid).get({source:'server'}),rating=+(profile.exists&&profile.data().rating)||1000;
+    if(typeof onlServerEnabled==='function'&&await onlServerEnabled())await onlCall('damaOnline',{action:'join',code});else{const profile=await ONL.db.collection('users').doc(uid).get({source:'server'}),rating=+(profile.exists&&profile.data().rating)||1000;
     await ONL.db.runTransaction(async tx=>{const d=await tx.get(ref);if(!d.exists)throw Error('ما لقينا الغرفة');const r=d.data();
       if(r.protocol!==2||!r.matchId)throw Error('حدّثوا اللعبة وافتحوا غرفة جديدة');if(r.host===uid)throw Error('هذي غرفتك أنت');if(r.guest||r.state!=='wait')throw Error('الغرفة ممتلئة أو مقفولة');
-      tx.update(ref,{guest:uid,guestProtocol:2,guestName:S.name||'لاعب',guestPhoto:S.avatarImg||null,guestRating:rating,state:'play'})});
+      tx.update(ref,{guest:uid,guestProtocol:2,guestName:S.name||'لاعب',guestPhoto:S.avatarImg||null,guestRating:rating,state:'play'})});}
     ONL.code=code;ONL.role='guest';ONL.seq=0;ONL.started=false;ONL.pending=null;closeLayer();onlListen(ref);
   }catch(e){if($('#onlE')===E&&E)E.textContent=e.code?onlErr(e):e.message}finally{ONL.joining=false}}
 function onlRemember(r){if(!ONL.user||!r.matchId)return;try{localStorage.setItem('dama.room.'+ONL.user.uid,JSON.stringify({code:ONL.code,id:r.matchId}))}catch(e){}}
@@ -4623,7 +4628,7 @@ function onlStored(){try{return JSON.parse(localStorage.getItem('dama.room.'+ONL
 function onlForget(){try{localStorage.removeItem('dama.room.'+ONL.user.uid)}catch(e){}}
 function onlDisconnected(message){if(!ONL.ref)return;const ref=ONL.ref;if(ONL.warned===message)return;ONL.warned=message;
   if(game&&game.online)game.busy=true;
-  onlDlg('<h3>اتصال المباراة توقف</h3><p>'+esc(message)+'</p><button class="pbtn" data-a="retry">إعادة الاتصال</button><button class="gbtn" data-a="leave">مغادرة بدون مكافأة</button>',{
+  onlDlg('<h3>اتصال المباراة توقف</h3><p>'+esc(message)+'</p><button class="pbtn" data-a="retry">إعادة الاتصال</button><button class="gbtn" data-a="leave">'+(ONL.room&&ONL.room.protocol===3&&ONL.room.state==='play'?'مغادرة واحتساب خسارة':'مغادرة بدون مكافأة')+'</button>',{
     retry:()=>{if(ONL.ref!==ref)return;closeLayer();ONL.warned=null;onlReconnect()},leave:()=>{closeLayer();if(game&&game.online)leaveMatch();else onlClose(true)}})}
 async function onlBeat(){const ref=ONL.ref,role=ONL.role;if(!ref)return;try{await ref.update({[role+'Seen']:firebase.firestore.FieldValue.serverTimestamp()})}catch(e){if(ONL.ref===ref)onlDisconnected('تعذّر الاتصال؛ النقلة ما تنحسب إلا بعد وصولها للسيرفر')}
   if(ONL.ref!==ref)return;const r=ONL.room,seen=r&&r[role==='host'?'guestSeen':'hostSeen'];const at=seen&&typeof seen.toMillis==='function'?seen.toMillis():+seen;
@@ -4632,7 +4637,7 @@ function onlListen(ref){if(ONL.unsub)ONL.unsub();clearInterval(ONL.hb);ONL.ref=r
   ONL.unsub=ref.onSnapshot(snap=>{if(ONL.ref!==ref||ONL.epoch!==epoch)return;
     if(!snap.exists){onlForget();onlDisconnected('الغرفة انقفلت؛ ما انحسب فوز أو خسارة');return}
     const r=snap.data(),uid=ONL.user.uid;if(r.host!==uid&&r.guest!==uid){onlDisconnected('حسابك مو عضو في هالغرفة');return}
-    if(r.guest&&r.guestProtocol!==2){onlDisconnected('الطرف الثاني يحتاج يحدث اللعبة ويدخل غرفة جديدة');return}const old=ONL.room;ONL.room=r;ONL.role=r.host===uid?'host':'guest';onlRemember(r);
+    if(r.guest&&r.guestProtocol!==r.protocol){onlDisconnected('الطرف الثاني يحتاج يحدث اللعبة ويدخل غرفة جديدة');return}const old=ONL.room;ONL.room=r;ONL.role=r.host===uid?'host':'guest';onlRemember(r);
     onlReceiveChat(r);
     if(old&&old.voiceEpoch!==r.voiceEpoch){vcStop();if(game&&game.online&&!game.over)vcStart().catch(()=>{})}
     if(r.state==='closed'){onlForget();onlDisconnected('الطرف الثاني غادر المباراة؛ ما انحسب فوز');return}
@@ -4654,7 +4659,7 @@ async function onlReconnect(){if(!ONL.ref)return;const ref=ONL.ref;
     ONL.room=r;ONL.pending=null;ONL.warned=null;if(game&&game.online){onlRebuild(r);if(r.result)onlApplyResult(r.result);else startTurn()}onlListen(ref);
   }catch(e){onlDisconnected(e.code?onlErr(e):e.message)}}
 function onlClose(del){const ref=ONL.ref,uid=ONL.user&&ONL.user.uid;ONL.epoch++;if(ONL.unsub)ONL.unsub();ONL.unsub=null;clearInterval(ONL.hb);clearTimeout(ONL.voiceTimer);
-  if(del&&ref)ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)return;const r=snap.data();if(r.host!==uid&&r.guest!==uid)return;if(r.state==='wait'&&r.host===uid)tx.delete(ref);else if(r.state==='play')tx.update(ref,{state:'closed',closedBy:uid})}).catch(()=>{});
+  if(del&&ref&&ONL.room&&ONL.room.protocol===3)onlCall('damaOnline',{action:'close',code:ONL.code,matchId:ONL.room.matchId}).catch(()=>{});else if(del&&ref)ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)return;const r=snap.data();if(r.host!==uid&&r.guest!==uid)return;if(r.state==='wait'&&r.host===uid)tx.delete(ref);else if(r.state==='play')tx.update(ref,{state:'closed',closedBy:uid})}).catch(()=>{});
   if(ONL.npc){ONL.npc.name=ONL.npc._realName||ONL.npc.name;delete ONL.npc._realName;ONL.npc=null}
   onlForget();ONL.ref=null;ONL.room=null;ONL.code=null;ONL.role=null;ONL.started=false;ONL.pending=null;ONL.sending=null;ONL.finishing=false}
 
@@ -4663,7 +4668,7 @@ async function onlStart(){if(!requirePlayAccount())return;if(mode!=='explore'){O
   const ref=ONL.ref;let best=null,bd=1e9;for(const n of npcs){if(n.blocked||n.state==='match')continue;const d=n.pos.distanceTo(player.pos);if(d<bd){bd=d;best=n}}
   if(!best){ONL.started=false;toast('ما لقينا مكان للمباراة');return}
   best._realName=best.name;best.name=ONL.oppName||'خصمك';ONL.npc=best;NEXT={quick:false};await beginMatch(best);
-  if(ONL.ref!==ref||!game)return;game.online={code:ONL.code,role:ONL.role,id:ONL.room.matchId,opponentRating:ONL.role==='host'?ONL.room.guestRating:ONL.room.hostRating,selfRating:ONL.role==='host'?ONL.room.hostRating:ONL.room.guestRating};game.diff=1;
+  if(ONL.ref!==ref||!game)return;game.online={code:ONL.code,role:ONL.role,id:ONL.room.matchId,protocol:ONL.room.protocol,opponentRating:ONL.role==='host'?ONL.room.guestRating:ONL.room.hostRating,selfRating:ONL.role==='host'?ONL.room.hostRating:ONL.room.guestRating};game.diff=1;
   onlRebuild(ONL.room);if(ONL.room.result)onlApplyResult(ONL.room.result)}
 function onlBoard(r,uid){let board=initBoard(),noCap=0;const moves=r.moves||[],log=[];let capMe=0,capOpp=0;
   for(let i=0;i<moves.length;i++){const e=moves[i];if(e.n!==i||e.by!==(i%2===0?r.host:r.guest))throw Error('ترتيب نقلات الغرفة غير صحيح');
@@ -4676,6 +4681,7 @@ function onlRebuild(r){const state=onlBoard(r,ONL.user.uid);game.boardEpoch=(gam
 /* النقلة تنحفظ بالسيرفر */
 async function onlSend(m){const ref=ONL.ref,uid=ONL.user.uid,seq=ONL.seq,matchId=ONL.room&&ONL.room.matchId;if(!ref)throw Error('الغرفة انقفلت');
   const event={n:seq,by:uid,from:onlEnc([m.from]),steps:onlEnc(m.steps),caps:onlEnc(m.caps)};
+  if(ONL.room.protocol===3){const {by,...move}=event;const out=await onlCall('damaOnline',{action:'move',code:ONL.code,matchId,move});if(ONL.ref!==ref)throw Error('الغرفة تغيرت');if(out.result){const snap=await ref.get({source:'server'});if(ONL.ref!==ref)throw Error('الغرفة تغيرت');ONL.room=snap.data()}ONL.seq=seq+1;return}
   await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('الغرفة انقفلت');const r=snap.data(),moves=r.moves||[],existing=moves[seq];
     if(r.matchId!==matchId||![r.host,r.guest].includes(uid))throw Error('الغرفة تغيرت');
     if(existing){if(['n','by','from','steps','caps'].every(k=>existing[k]===event[k]))return;throw Error('النقلة تغيرت؛ أعد الاتصال')}
@@ -4688,7 +4694,7 @@ async function onlCommitMove(){if(ONL.sending||!ONL.pending)return;const pending
   catch(e){if(ONL.pending===pending&&game&&game.id===pending.id)onlDlg('<h3>النقلة ما تأكد حفظها</h3><p>اللوحة متوقفة إلى أن تتأكد النقلة. '+esc(e.code?onlErr(e):e.message)+'</p><button class="pbtn" data-a="retry">أعد الإرسال</button><button class="gbtn" data-a="reconnect">استرجع لوحة السيرفر</button>',{retry:()=>{closeLayer();onlCommitMove()},reconnect:()=>{closeLayer();onlReconnect()}})}
   finally{if(ONL.sending===job)ONL.sending=null}}
 async function onlFinish(res,why){if(ONL.finishing||!ONL.ref||!game||game.over)return;ONL.finishing=true;game.busy=true;const ref=ONL.ref,id=game.id,uid=ONL.user.uid,matchId=game.online.id;
-  try{const result=await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('الغرفة انقفلت');const r=snap.data();if(![r.host,r.guest].includes(uid)||r.matchId!==matchId)throw Error('الغرفة تغيرت');if(r.result)return r.result;
+  try{const result=ONL.room.protocol===3?(await onlCall('damaOnline',{action:why==='استسلمت'?'resign':'finish',code:ONL.code,matchId})).result:await ONL.db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('الغرفة انقفلت');const r=snap.data();if(![r.host,r.guest].includes(uid)||r.matchId!==matchId)throw Error('الغرفة تغيرت');if(r.result)return r.result;
       if(r.state!=='play')throw Error('المباراة مغلقة');const st=onlBoard(r,r.host);let winner=null,reason=why;
       if(why==='استسلمت'){winner=uid===r.host?r.guest:r.host;reason='استسلام'}
       else if(!st.board.some(x=>x>0))winner=r.guest;
@@ -4699,6 +4705,7 @@ async function onlFinish(res,why){if(ONL.finishing||!ONL.ref||!game||game.over)r
     if(ONL.ref===ref&&game&&game.id===id)onlApplyResult(result);
   }catch(e){if(ONL.ref===ref)onlDisconnected(e.code?onlErr(e):e.message)}finally{ONL.finishing=false}}
 function onlApplyResult(result){if(!game||!game.online||game.over||ONL.pending)return;const id=game.online.id;S.onlineResults=S.onlineResults||{};
+  if(game.online.protocol===3){const a=result[ONL.role==='host'?'hostAward':'guestAward'];if(result.verified!==true||!a||!Number.isFinite(a.rating)){onlDisconnected('تعذّر التحقق من نتيجة المباراة');return}game.online.award=a;S.onlineRating=a.rating}
   if(S.onlineResults[id]){game.over=true;game.busy=true;toast('نتيجة المباراة محسوبة من قبل');return}
   if(ONL.room&&(ONL.room.moves||[]).length!==game.plies)onlRebuild(ONL.room);S.onlineResults[id]=result;onlForget();const res=result.winner==null?0:result.winner===ONL.user.uid?1:-1;saveBatch(()=>_endGame25(res,result.reason||'انتهت المباراة'))}
 async function onlChat(q){if(!game||!game.online||!ONL.ref||!Number.isInteger(q)||!QUICK[q])return;const ref=ONL.ref,uid=ONL.user.uid;
@@ -4921,7 +4928,7 @@ function accRaw(){if(ACC.reloading)return;try{S.savedAt=Date.now();localStorage.
 function accBytes(text){let n=0;for(const c of text){const cp=c.codePointAt(0);n+=cp<128?1:cp<2048?2:cp<65536?3:4}return n}
 function accBackup(uid){try{localStorage.setItem('acc.backup.'+uid,JSON.stringify(S));return true}catch(e){return false}}
 function accSaveStatus(){if(window.DAMA_LOCAL_SAVE_FAILED&&ACC.saveError)return 'الحفظ ما اكتمل بالجهاز أو السيرفر؛ لا تسكر الصفحة';if(ACC.conflict)return 'الحفظ تغيّر من جهاز ثاني — راجع المزامنة';if(ACC.saveError)return 'تقدمك محفوظ بالجهاز؛ ننتظر اتصال السيرفر';if(ACC.uploading)return 'جارٍ حفظ التقدم…';if(ACC.synced&&ACC.ackedFp!==accFp())return 'تقدمك بالجهاز؛ بانتظار حفظ آخر التغييرات';return ACC.synced?'آخر حفظ بالسيرفر تم بنجاح ✅':'جارٍ قراءة حفظ الحساب…'}
-function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||!ONL.user)return Promise.resolve(false);
+function accUpload(now){if(!ACC.ready||ACC.anon||!ACC.synced||ACC.reloading||ACC.deleting||!ONL.user)return Promise.resolve(false);
   const uid=ONL.user.uid;if(!ONL.auth.currentUser||ONL.auth.currentUser.uid!==uid||(window.DAMA_AUTH&&uid!==window.DAMA_AUTH.uid))return Promise.resolve(false);
   clearTimeout(ACC.upT);const t=Date.now();
   if(ACC.uploading)return ACC.uploading.then(ok=>ok&&now?accUpload(true):ok);
@@ -5019,8 +5026,27 @@ async function accSignOut(){if(ACC.signingOut)return;ACC.signingOut=true;
     try{localStorage.removeItem(ACC_KEY);sessionStorage.removeItem('accLoadedAt');localStorage.removeItem(ACC_PEND);localStorage.removeItem('acc.owner')}catch(e){}
     toast('سجّلت خروج');location.reload();
   }catch(e){toast(accErr(e))}finally{ACC.signingOut=false}}
-function accDelDlg(){accDlg('<span class="tag">حذف الحساب</span><h3>تواصل مع الإدارة</h3><p class="muted">الحذف من داخل اللعبة موقوف مؤقتاً لحماية بياناتك أثناء تجهيز الحذف الآمن.</p><button class="pbtn" data-a="n">رجوع</button>',{n:()=>accMenu()})}
-async function accDelete(){toast('الحذف من داخل اللعبة موقوف مؤقتاً لحماية تقدمك. تواصل مع إدارة اللعبة لحذف الحساب.',6000);return false}
+async function accDelDlg(){
+  try{const cfg=typeof onlBackendConfig==='function'?await onlBackendConfig():{};if(!cfg.accountDeletion){accDlg('<span class="tag">حذف الحساب</span><h3>تواصل مع الإدارة</h3><p class="muted">الحذف من داخل اللعبة موقوف مؤقتاً لحماية بياناتك أثناء تجهيز الحذف الآمن.</p><button class="pbtn" data-a="n">رجوع</button>',{n:()=>accMenu()});return}
+    const u=ONL.auth.currentUser,google=u.providerData.some(p=>p.providerId==='google.com');ACC.deleteConfirmed=false;
+    accDlg('<span class="tag">حذف نهائي</span><h3>حذف حسابك وتقدمك؟</h3><p class="muted">سيُحذف حسابك وحفظك وحجز اسمك وسجل مكافآتك. لا يمكن التراجع بعد تأكيد الطلب. المباريات المشتركة تُغلق وتُزال هويتك منها.</p>'+(google?'<p class="muted">سنطلب تأكيد هويتك عبر Google.</p>':'<input class="ain" id="aDeletePassword" type="password" autocomplete="current-password" placeholder="كلمة المرور لتأكيد هويتك">')+'<div class="st bad" id="aDeleteError"></div><button class="gbtn danger" data-a="yes">حذف الحساب نهائياً</button><button class="pbtn" data-a="no">رجوع</button>',{no:()=>accMenu(),yes:()=>{ACC.deleteConfirmed=true;accDelete()}})
+  }catch(e){toast(accErr(e))}
+}
+async function accDelete(){
+  if(typeof ACC==='undefined'||!ACC.deleteConfirmed||typeof onlCall!=='function'){toast('الحذف من داخل اللعبة موقوف مؤقتاً لحماية تقدمك. تواصل مع إدارة اللعبة لحذف الحساب.',6000);return false}
+  if(ACC.deleting)return false;ACC.deleting=true;const u=ONL.auth.currentUser,uid=u.uid;
+  try{
+    if(u.providerData.some(p=>p.providerId==='google.com'))await u.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+    else{const input=$('#aDeletePassword'),password=input?input.value:'';if(!password)throw Error('اكتب كلمة المرور لتأكيد هويتك');await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,password));if(input)input.value=''}
+    await u.getIdToken(true);if(ONL.auth.currentUser?.uid!==uid)throw Error('الحساب تغيّر؛ أعد فتح نافذة الحذف');
+    const answer=await onlCall('damaDeleteAccount',{confirmation:'DELETE_MY_ACCOUNT'});if(!answer.accepted)throw Error('طلب الحذف لم يتأكد');
+    ACC.synced=false;ACC.reloading=true;clearTimeout(ACC.upT);clearTimeout(ACC.retryT);try{vcStop();onlClose(false)}catch(e){}
+    try{for(const key of [ACC_KEY,ACC_PEND,'acc.owner','acc.base.'+uid,'acc.backup.'+uid,'dama.room.'+uid])localStorage.removeItem(key);sessionStorage.removeItem('accLoadedAt')}catch(e){}
+    try{await ONL.auth.signOut()}catch(e){}
+    accDlg('<h3>تم قبول طلب الحذف</h3><p class="muted">جارٍ إكمال حذف الحساب وبياناته. لا تحتاج إبقاء الصفحة مفتوحة.</p><button class="pbtn" data-a="done">العودة للبداية</button>',{done:()=>location.reload()});return true
+  }catch(e){const text=e.code?accErr(e):e.message,err=$('#aDeleteError');if(err)err.textContent=text;else toast(text,6000);return false}
+  finally{ACC.deleting=false;ACC.deleteConfirmed=false}
+}
 /* ---------- مداخل الواجهة ---------- */
 function accUI(){let b=$('#accBan');const lb=$('#lbProf');if(!ACC.ready||!ACC.anon||!lb||mode!=='lobby'||document.querySelector('.scrim')){if(b)b.remove();return}
   if(!b){b=document.createElement('button');b.id='accBan';b.textContent='💾 سجّل واحفظ تقدمك';b.onclick=e=>{e.stopPropagation();accLoginDlg()};document.body.appendChild(b)}

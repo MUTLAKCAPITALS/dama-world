@@ -2,30 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function accountAlive() { return signedIn() && !exists(/databases/$(database)/documents/accountDeletions/$(request.auth.uid)); }
+    function legacyOnline() { return !exists(/databases/$(database)/documents/cfg/backend) || get(/databases/$(database)/documents/cfg/backend).data.get('enabled', false) != true; }
     function registered() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
-    function isAdmin() { return signedIn() && request.auth.token.email == 'alomarmutlak@gmail.com' && request.auth.token.email_verified == true; }
+    function isAdmin() { return signedIn() && request.auth.token.get('email', '') == 'alomarmutlak@gmail.com' && request.auth.token.get('email_verified', false) == true; }
     function ctlDoc() { return /databases/$(database)/documents/ctl/$(request.auth.uid); }
     function notBanned() { return !exists(ctlDoc()) || get(ctlDoc()).data.get('ban', false) != true; }
     function changesOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
 
     match /users/{uid} {
       // The document contains the complete private save, not just a public profile.
-      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow get: if (accountAlive() && request.auth.uid == uid) || isAdmin();
       allow list: if isAdmin();
-      allow create, update, delete: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow create, update, delete: if (accountAlive() && request.auth.uid == uid) || isAdmin();
     }
     match /names/{key} {
-      allow read: if signedIn();
-      allow create: if registered() && request.resource.data.uid == request.auth.uid;
+      allow read: if accountAlive();
+      allow create: if registered() && accountAlive() && request.resource.data.uid == request.auth.uid;
       // Reusing a normalized name may change its display spelling, never its owner.
-      allow update: if registered() && resource.data.uid == request.auth.uid
+      allow update: if registered() && accountAlive() && resource.data.uid == request.auth.uid
         && request.resource.data.uid == resource.data.uid && changesOnly(['name', 'at'])
         && request.resource.data.name is string && request.resource.data.name.size() >= 3
         && request.resource.data.name.size() <= 14 && request.resource.data.at is int;
-      allow delete: if (signedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow delete: if (accountAlive() && resource.data.uid == request.auth.uid) || isAdmin();
     }
     match /ctl/{uid} {
-      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow read: if (accountAlive() && request.auth.uid == uid) || isAdmin();
       allow write: if isAdmin();
     }
     match /cfg/{id} {
@@ -33,8 +35,23 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /reports/{id} {
-      allow create: if signedIn() && request.resource.data.by == request.auth.uid && request.resource.data.status == 'open';
+      allow create: if accountAlive() && request.resource.data.by == request.auth.uid && request.resource.data.status == 'open';
       allow read, update, delete: if isAdmin();
+    }
+
+    match /competitive/{uid} {
+      allow get: if (accountAlive() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
+      match /receipts/{receiptId} {
+        allow read: if (accountAlive() && request.auth.uid == uid) || isAdmin();
+        allow write: if false;
+      }
+    }
+    match /accountDeletions/{uid} {
+      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
     }
 
     match /rooms/{roomId} {
@@ -100,16 +117,25 @@ service cloud.firestore {
         return a.state == 'play' && changesOnly(['state','closedBy']) && b.state == 'closed' && b.closedBy == request.auth.uid;
       }
       function edit(a, b) {
-        return joining(a, b) || (member(a) && (heartbeat(a, b) || move(a, b) || chat(a, b)
-          || voiceReset(a, b) || voice(a, b) || finish(a, b) || leaving(a, b)));
+        let keys = b.diff(a).affectedKeys();
+        let legacy = a.protocol == 2;
+        return keys.hasAny(['guest']) ? (legacy && joining(a, b)) : (member(a) && (
+          keys.hasAny(['hostSeen','guestSeen']) ? heartbeat(a, b) :
+          keys.hasAny(['moves']) ? (legacy && move(a, b)) :
+          keys.hasAny(['messages']) ? chat(a, b) :
+          keys.hasAny(['voiceEpoch']) ? voiceReset(a, b) :
+          keys.hasAny(['vOffer','vAnswer','hIce','gIce']) ? voice(a, b) :
+          keys.hasAny(['state','result']) ? (legacy && (b.state == 'done' ? finish(a, b) : leaving(a, b))) : false));
       }
       // Open waiting rooms can be joined by code; active voice and moves are private.
-      allow get: if isAdmin() || (registered() && notBanned() && (!exists(/databases/$(database)/documents/rooms/$(roomId))
+      allow get: if isAdmin() || (registered() && accountAlive() && notBanned() && (!exists(/databases/$(database)/documents/rooms/$(roomId))
         || member(resource.data) || (resource.data.state == 'wait' && resource.data.guest == null)));
       allow list: if isAdmin();
-      allow create: if registered() && notBanned() && validCreate(request.resource.data);
-      allow update: if registered() && notBanned() && resource.data.protocol == 2 && edit(resource.data, request.resource.data);
-      allow delete: if registered() && request.auth.uid == resource.data.host && resource.data.state == 'wait';
+      allow create: if registered() && accountAlive() && notBanned() && legacyOnline() && validCreate(request.resource.data);
+      allow update: if registered() && accountAlive() && notBanned()
+        && (resource.data.protocol == 2 ? legacyOnline() : resource.data.protocol == 3)
+        && edit(resource.data, request.resource.data);
+      allow delete: if registered() && accountAlive() && legacyOnline() && resource.data.protocol == 2 && request.auth.uid == resource.data.host && resource.data.state == 'wait';
     }
   }
 }
